@@ -1,0 +1,27 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <form class="jform" data-journal-form>
+    <div class="dir-toggle">
+      <button class="dir-opt on-long" type="button" aria-pressed="true" data-journal-direction="long">LONG</button>
+      <button class="dir-opt" type="button" aria-pressed="false" data-journal-direction="short">SHORT</button>
+    </div>
+    <div class="jgrid3">
+      <label class="field">ENTRY TIME <input name="entryTime" placeholder="08/31 14:32" autocomplete="off" spellcheck="false"></label>
+      <label class="field">ENTRY PRICE <input name="entryPrice" placeholder="6392.25" autocomplete="off" spellcheck="false"></label>
+      <label class="field">EXIT PRICE <input name="exitPrice" placeholder="6381.75" autocomplete="off" spellcheck="false"></label>
+    </div>
+    <div class="conf-block" data-journal-confluences>
+      <div class="conf-label">CONFLUENCES</div>
+      <div class="conf-set" data-journal-selected-confluences></div>
+      <div class="conf-set" data-journal-available-confluences></div>
+    </div>
+    <label class="field">SCREENSHOTS
+      <span class="dropzone"><input type="file" accept="image/*" multiple data-journal-screenshots><output data-journal-screenshot-count>[ DROP CHART EVIDENCE :: 0 ATTACHED ]</output></span>
+    </label>
+    <label class="field">NOTES <textarea name="notes" rows="4" placeholder="trade thesis, execution commentary, lessons..."></textarea></label>
+    <div class="form-actions">
+      <button class="btn" type="button" data-journal-save-draft>SAVE DRAFT</button>
+      <button class="btn btn-solid" type="submit">SUBMIT ENTRY</button>
+    </div>
+  </form>
+</section>

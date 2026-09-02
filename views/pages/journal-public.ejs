@@ -1,0 +1,14 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>" data-entry-id="<%= page.data.entryId %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="empty" data-journal-not-found hidden>
+    <span class="blip">[ ENTRY NOT FOUND ]</span><br>
+    <span>the requested public record is not on this terminal</span>
+  </div>
+  <div class="pub" data-journal-public-view>
+    <section class="pub-embed"><div class="pub-embed-label">// WEBHOOK EMBED DELIVERED</div><pre data-webhook-embed></pre></section>
+    <div class="pub-link"><span class="lbl">PUBLIC LINK</span><span class="url" data-public-link></span><button class="btn" type="button" data-journal-copy-link>COPY</button></div>
+    <div class="section-label">&gt; PUBLIC ENTRY RECORD</div>
+    <div class="pub-record" data-journal-record></div>
+  </div>
+  <div style="margin-top: 18px"><a class="btn" href="/journal" data-nav-link>← BACK TO JOURNAL</a></div>
+</section>

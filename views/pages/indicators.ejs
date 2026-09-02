@@ -1,0 +1,6 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="section-label">&gt; INDICATOR ACCESS</div><%- include("../partials/empty-state", { lines: ["[ NO INDICATORS PROVISIONED ]", "ENTITLEMENT SYNC PENDING :: INDICATOR ACCESS READY"] }) %>
+  <div style="height:24px"></div>
+  <section class="panel howto"><div class="panel-kicker">&gt; TRADINGVIEW ACCESS INSTRUCTIONS</div><ol><li>copy the invite code issued to your operator ID</li><li>open TradingView &gt; indicators &gt; invite-only scripts</li><li>paste the code to unlock the entitlement</li><li>entitlement syncs back to this terminal within 60s</li></ol><div class="code-row"><span class="code-field">[ NO CODE ISSUED ]</span><button class="btn" type="button" disabled>COPY</button></div></section>
+</section>

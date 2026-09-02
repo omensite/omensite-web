@@ -1,0 +1,13 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="grid grid-4" style="margin-bottom:26px">
+    <div class="stat"><div class="stat-label">ALERTS ARMED</div><div class="stat-value muted">0</div></div>
+    <div class="stat"><div class="stat-label">JOURNAL ENTRIES</div><div class="stat-value muted" data-journal-count>0</div></div>
+    <div class="stat"><div class="stat-label">MARKET FEED</div><div class="stat-value muted">STANDBY</div></div>
+    <div class="stat"><div class="stat-label">UPTIME</div><div class="stat-value"><span data-uptime-min>0m</span></div></div>
+  </div>
+  <div class="grid grid-2-1">
+    <section class="panel"><div class="panel-kicker">&gt; RECENT ACTIVITY</div><%- include("../partials/empty-state", { lines: ["[ NO ACTIVITY RECORDED ]", "EVENT BUS IDLE :: STREAMS NOT MOUNTED"] }) %></section>
+    <nav class="panel"><div class="panel-kicker">&gt; QUICK ACCESS</div><a href="/indicators" data-nav-link><span class="quicklink">./indicators</span></a><a href="/market-news" data-nav-link><span class="quicklink">./market-news</span></a><a href="/alerts/ict" data-nav-link><span class="quicklink">./alerts/ict</span></a><a href="/alerts/support-resistance" data-nav-link><span class="quicklink">./alerts/support-resistance</span></a><a href="/journal" data-nav-link><span class="quicklink">./journal</span></a></nav>
+  </div>
+</section>

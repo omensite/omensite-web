@@ -1,0 +1,4 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="chips"><button class="chip" type="button" data-news-filter="all">ALL</button><button class="chip" type="button" data-news-filter="red">RED</button><button class="chip" type="button" data-news-filter="orange">ORANGE</button></div><%- include("../partials/empty-state", { lines: ["[ NO EVENTS ON CALENDAR ]", "NEWS FEED ON STANDBY :: RED / ORANGE FOLDERS EMPTY"] }) %>
+</section>

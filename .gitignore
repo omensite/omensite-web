@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and coverage
+*.log
+npm-debug.log*
+coverage/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+
+# Local implementation workflow artifacts
+.superpowers/
+
+# Redundant source-preview bundle retained only on this workstation
+/Copy of Retro Terminal Login Interface.zip
+/index.html
+/app.js
+/styles.css
+/favicon.ico

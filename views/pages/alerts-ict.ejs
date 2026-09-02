@@ -1,0 +1,4 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="toolbar"><button class="btn btn-primary" type="button" data-alert-standby>+ NEW RULE</button></div><div class="section-label">&gt; ICT RULES</div><%- include("../partials/empty-state", { lines: ["[ NO ICT RULES CONFIGURED ]", "ALERT ENGINE STANDBY :: MSS / FVG / LIQUIDITY SWEEP"] }) %><div style="height:22px"></div><div class="section-label">&gt; TRIGGER LOG</div><%- include("../partials/empty-state", { lines: ["[ NO TRIGGERS LOGGED ]"] }) %>
+</section>

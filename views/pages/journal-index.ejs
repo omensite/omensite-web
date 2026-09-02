@@ -1,0 +1,11 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="toolbar">
+    <a class="btn btn-primary" href="/journal/new" data-nav-link>+ NEW JOURNAL ENTRY</a>
+  </div>
+  <div class="list" data-journal-list></div>
+  <div class="empty" data-journal-empty>
+    <span class="blip">[ NO ENTRIES LOGGED ]</span><br>
+    <span>SUBMIT YOUR FIRST TRADE TO OPEN THE JOURNAL</span>
+  </div>
+</section>

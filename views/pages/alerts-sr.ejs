@@ -1,0 +1,4 @@
+<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+  <%- include("../partials/route-head", { page }) %>
+  <div class="toolbar"><button class="btn btn-primary" type="button" data-alert-standby>+ NEW LEVEL</button></div><div class="section-label">&gt; SUPPORT / RESISTANCE LEVELS</div><%- include("../partials/empty-state", { lines: ["[ NO LEVELS DEFINED ]", "ALERT ENGINE STANDBY :: AWAITING FIRST LEVEL"] }) %>
+</section>
