@@ -19,11 +19,11 @@ test("fragment requests receive 401 instead of a redirect", async () => {
     .expect({ error: "AUTH_REQUIRED", loginUrl: "/login" });
 });
 
-test("login identifies the current v0.1.0 release", async () => {
+test("login identifies the current v0.1.1 release", async () => {
   await request(createApp({ sessionSecret: "test-secret" }))
     .get("/login")
     .expect(200)
-    .expect(/OMENSITE TRADING TERMINAL v0\.1\.0/);
+    .expect(/OMENSITE TRADING TERMINAL v0\.1\.1/);
 });
 
 test("root and login recover to the correct page from every session state", async () => {

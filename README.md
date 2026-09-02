@@ -1,6 +1,6 @@
 # OMENSITE
 
-**Version v0.1.0 — Early Development Preview**
+**Version v0.1.1 — Early Development Preview**
 
 > An AI-assisted trading intelligence platform for execution review, structured journaling, indicator research, trader education, and weekly market context.
 
@@ -18,7 +18,7 @@ The long-term objective is to use AI to examine trade executions alongside the t
 - **Educational content** — Provide structured material for developing market knowledge, execution discipline, and repeatable trading processes.
 - **Weekly market intelligence** — Deliver a focused briefing on meaningful market developments, scheduled events, and conditions that may affect the coming trading week.
 
-## What v0.1.0 includes
+## What v0.1.1 includes
 
 This release establishes OMENSITE's application architecture and core user experience:
 
@@ -31,7 +31,7 @@ This release establishes OMENSITE's application architecture and core user exper
 - Interface foundations for indicator and alert features, plus a native live economic calendar with high/medium impact and market filters.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
-AI analysis, brokerage or execution-data imports, Discord SSO, PostgreSQL persistence, and editorial content pipelines are planned capabilities and are not connected in v0.1.0.
+AI analysis, brokerage or execution-data imports, Discord SSO, PostgreSQL persistence, and editorial content pipelines are planned capabilities and are not connected in v0.1.1.
 
 ## Technology
 
@@ -74,7 +74,7 @@ npm run dev
 
 ### Live market calendar
 
-The calendar connects to Economicium's public JSON calendar automatically. No account, API key, or environment configuration is required.
+Market News is officially powered by Economicium's public JSON API. OMENSITE retrieves the calendar directly from this public endpoint, so no account, API key, or environment configuration is required.
 
 OMENSITE keeps only high- and medium-impact economic releases, maps each country to its affected currency, converts release times to the workstation's timezone, and groups the results by day. The server caches a successful response for 24 hours; the terminal's refresh control can request an immediate update. If the source is temporarily unavailable, the last successful in-memory result remains visible as stale data.
 
