@@ -65,6 +65,26 @@ test("demo authentication rejects a ban for the normalized demo ID", async () =>
   assert.equal(userRepository.findById("demo:local_operator"), null);
 });
 
+test("demo authentication rejects module-only roles before persisting an operator", async () => {
+  for (const demoRoles of [["Indicators"], ["Journal"], ["Indicators", "Journal"]]) {
+    const userRepository = createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" });
+    const service = createAuthService({
+      mode: "demo",
+      demoRoles,
+      rolePolicy,
+      userRepository,
+      banRepository: { isBanned: () => false },
+      now,
+    });
+
+    await assert.rejects(
+      () => service.authenticateDemo({ username: "module_user", passkey: "preview" }),
+      { code: "ACCESS_REVOKED" },
+    );
+    assert.equal(userRepository.findById("demo:module_user"), null);
+  }
+});
+
 test("Discord completion creates a role-backed operator and confines tokens to it", async () => {
   const userRepository = createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" });
   const service = createAuthService({

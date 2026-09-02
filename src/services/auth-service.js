@@ -68,6 +68,7 @@ export function createAuthService({
 
     rejectIfBanned(`demo:${normalizedUsername.toLowerCase()}`);
     const access = rolePolicy.fromRoleNames(demoRoles);
+    rejectIfNoBaseAccess(access);
     const operator = buildOperator({
       identity: {
         id: `demo:${normalizedUsername.toLowerCase()}`,
