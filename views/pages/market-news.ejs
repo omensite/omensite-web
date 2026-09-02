@@ -16,6 +16,7 @@
 
     <div class="calendar-status" role="status" aria-live="polite" data-calendar-status>
       <span data-calendar-link-status>LINK :: <%= calendarLinkState %></span>
+      <a class="calendar-source" href="https://www.economicium.com/economic-calendar/" target="_blank" rel="noopener noreferrer">SOURCE :: ECONOMICIUM / OFFICIAL SCHEDULES</a>
       <span>VISIBLE :: <strong data-calendar-count><%= calendar.events.length %></strong></span>
       <span>UPDATED :: <time data-calendar-updated datetime="<%= calendar.updatedAt || "" %>"><%= calendar.updatedAt || "--" %></time></span>
     </div>
@@ -39,7 +40,6 @@
 
     <div class="calendar-column-head" aria-hidden="true">
       <span>TIME</span><span>IMPACT</span><span>MARKET</span><span>EVENT</span>
-      <span>ACTUAL</span><span>FORECAST</span><span>PREVIOUS</span>
     </div>
     <div class="calendar-events" data-calendar-events>
       <% for (const event of calendar.events) { %>

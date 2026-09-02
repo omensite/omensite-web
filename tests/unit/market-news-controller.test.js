@@ -144,7 +144,7 @@ test("manual refresh requests fresh data and renders it as text", async () => {
         ok: true,
         calendar: {
           state: "live",
-          events: [{ id: "99", timestamp: "2026-09-04T15:00:00.000Z", market: "USD", country: "United States", title: "<img src=x onerror=alert(1)>", importance: "high", actual: "4.2%", forecast: "4.1%", previous: "4.0%" }],
+          events: [{ id: "99", timestamp: "2026-09-04T15:00:00.000Z", market: "USD", country: "United States", title: "<img src=x onerror=alert(1)>", importance: "high", source: "OFFICIAL SCHEDULES" }],
           updatedAt: "2026-09-02T12:01:00.000Z",
           range: { from: "2026-08-30", to: "2026-09-05" },
         },
@@ -173,7 +173,7 @@ test("dynamically rendered rows expose a real label for every field including ti
       ok: true,
       calendar: {
         state: "live",
-        events: [{ id: "accessible", timestamp: "2026-09-04T15:00:00.000Z", market: "USD", country: "United States", title: "Payrolls", importance: "high", actual: "4.2%", forecast: "4.1%", previous: "4.0%" }],
+        events: [{ id: "accessible", timestamp: "2026-09-04T15:00:00.000Z", market: "USD", country: "United States", title: "Payrolls", importance: "high", source: "OFFICIAL SCHEDULES" }],
         updatedAt: "2026-09-02T12:01:00.000Z",
         range: { from: "2026-08-30", to: "2026-09-05" },
       },
@@ -185,7 +185,7 @@ test("dynamically rendered rows expose a real label for every field including ti
 
   const row = root.querySelector('[data-event-id="accessible"]');
   assert.deepEqual([...row.querySelectorAll(".calendar-field-label")].map((label) => label.textContent), [
-    "TIME :: ", "IMPACT :: ", "MARKET :: ", "EVENT :: ", "ACTUAL :: ", "FORECAST :: ", "PREVIOUS :: ",
+    "TIME :: ", "IMPACT :: ", "MARKET :: ", "EVENT :: ",
   ]);
   assert.equal(row.querySelector("[data-event-time]").dataset.field, "TIME");
   const dayHeading = row.closest("[data-calendar-day]").querySelector(".calendar-day-label");

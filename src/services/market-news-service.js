@@ -13,30 +13,32 @@ const COUNTRY_MARKETS = new Map([
   ["China", "CNY"],
 ]);
 
-function nullableText(value) {
-  if (value === null || value === undefined || String(value).trim() === "") return null;
-  return String(value);
-}
-
 function normalizeEvent(row) {
-  const market = COUNTRY_MARKETS.get(String(row.Country ?? ""));
-  const importance = Number(row.Importance);
-  const id = nullableText(row.CalendarId);
-  const providerTime = String(row.Date ?? "");
-  const timestamp = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(providerTime) ? providerTime : `${providerTime}Z`);
+  const country = String(row.country ?? "");
+  const market = COUNTRY_MARKETS.get(country);
+  const importance = String(row.impact ?? "").toLowerCase();
+  const date = String(row.date ?? "");
+  const time = String(row.time ?? "");
+  const title = String(row.title ?? "").trim();
+  const timestamp = new Date(`${date}T${time}:00Z`);
+  const id = [date, time, country, title].join("|");
 
-  if (!id || !market || ![2, 3].includes(importance) || Number.isNaN(timestamp.valueOf())) return null;
+  if (
+    row.type !== "economic" || !market || !["high", "medium"].includes(importance) ||
+    !title || Number.isNaN(timestamp.valueOf())
+  ) return null;
 
   return {
     id,
     timestamp: timestamp.toISOString(),
     market,
-    country: String(row.Country),
-    title: String(row.Event || row.Category || "UNNAMED EVENT"),
-    importance: importance === 3 ? "high" : "medium",
-    actual: nullableText(row.Actual),
-    forecast: nullableText(row.Forecast),
-    previous: nullableText(row.Previous),
+    country,
+    title,
+    importance,
+    actual: null,
+    forecast: null,
+    previous: null,
+    source: "ECONOMICIUM / OFFICIAL SCHEDULES",
   };
 }
 
@@ -52,7 +54,7 @@ export function getCalendarWeekRange(date) {
   return { from: formatUtcDate(sunday), to: formatUtcDate(saturday) };
 }
 
-export function createMarketNewsService({ provider, now = () => new Date(), cacheTtlMs = 60_000 }) {
+export function createMarketNewsService({ provider, now = () => new Date(), cacheTtlMs = 86_400_000 }) {
   const cacheByKey = new Map();
   const inFlightByKey = new Map();
 

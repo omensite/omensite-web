@@ -16,10 +16,11 @@ test("service keeps supported medium and high events and normalizes missing valu
   const provider = {
     async fetchWeek() {
       return [
-        { CalendarId: "3", Date: "2026-09-03T12:30:00", Country: "United States", Event: "Non Farm Payrolls", Importance: 3, Actual: "", Forecast: "75K", Previous: "62K" },
-        { CalendarId: "2", Date: "2026-09-02T09:00:00", Country: "Euro Area", Event: "CPI", Importance: 2, Actual: "2.1%", Forecast: "2.0%", Previous: "1.9%" },
-        { CalendarId: "1", Date: "2026-09-01T08:00:00", Country: "United Kingdom", Event: "Minor Survey", Importance: 1 },
-        { CalendarId: "4", Date: "2026-09-04T08:00:00", Country: "Brazil", Event: "Unsupported Market", Importance: 3 },
+        { date: "2026-09-03", time: "12:30", title: "Non Farm Payrolls", country: "United States", impact: "high", type: "economic" },
+        { date: "2026-09-02", time: "09:00", title: "CPI", country: "Euro Area", impact: "medium", type: "economic" },
+        { date: "2026-09-01", time: "08:00", title: "Minor Survey", country: "United Kingdom", impact: "low", type: "economic" },
+        { date: "2026-09-04", time: "08:00", title: "Unsupported Market", country: "Brazil", impact: "high", type: "economic" },
+        { date: "2026-09-04", title: "Company earnings", country: "United States", impact: "high", type: "earnings" },
       ];
     },
   };
@@ -32,17 +33,39 @@ test("service keeps supported medium and high events and normalizes missing valu
 
   assert.equal(result.state, "live");
   assert.deepEqual(result.events.map((event) => [event.id, event.market, event.importance]), [
-    ["2", "EUR", "medium"],
-    ["3", "USD", "high"],
+    ["2026-09-02|09:00|Euro Area|CPI", "EUR", "medium"],
+    ["2026-09-03|12:30|United States|Non Farm Payrolls", "USD", "high"],
   ]);
   assert.equal(result.events[0].timestamp, "2026-09-02T09:00:00.000Z");
   assert.equal(result.events[1].actual, null);
+  assert.equal(result.events[1].source, "ECONOMICIUM / OFFICIAL SCHEDULES");
+});
+
+test("default cache refreshes the public feed no more than once per day", async () => {
+  let calls = 0;
+  let currentTime = new Date("2026-09-02T12:00:00.000Z");
+  const provider = {
+    fetchWeek: async () => {
+      calls += 1;
+      return [{ date: "2026-09-03", time: "12:30", title: "Payrolls", country: "United States", impact: "high", type: "economic" }];
+    },
+  };
+  const service = createMarketNewsService({ provider, now: () => currentTime });
+
+  await service.getCurrentWeek();
+  currentTime = new Date("2026-09-03T11:59:59.999Z");
+  await service.getCurrentWeek();
+  assert.equal(calls, 1);
+
+  currentTime = new Date("2026-09-03T12:00:00.000Z");
+  await service.getCurrentWeek();
+  assert.equal(calls, 2);
 });
 
 test("service shares fresh results and force refresh bypasses the cache", async () => {
   let calls = 0;
   const provider = {
-    fetchWeek: async () => [{ CalendarId: String(++calls), Date: "2026-09-02T12:00:00", Country: "Japan", Event: "BoJ Statement", Importance: 3, Actual: null, Forecast: null, Previous: null }],
+    fetchWeek: async () => [{ date: "2026-09-02", time: "12:00", country: "Japan", title: `BoJ Statement ${++calls}`, impact: "high", type: "economic" }],
   };
   const service = createMarketNewsService({ provider, now: () => new Date("2026-09-02T12:00:00Z") });
 
@@ -50,9 +73,9 @@ test("service shares fresh results and force refresh bypasses the cache", async 
   const cached = await service.getCurrentWeek();
   const refreshed = await service.getCurrentWeek({ force: true });
 
-  assert.equal(first.events[0].id, "1");
-  assert.equal(cached.events[0].id, "1");
-  assert.equal(refreshed.events[0].id, "2");
+  assert.equal(first.events[0].id, "2026-09-02|12:00|Japan|BoJ Statement 1");
+  assert.equal(cached.events[0].id, "2026-09-02|12:00|Japan|BoJ Statement 1");
+  assert.equal(refreshed.events[0].id, "2026-09-02|12:00|Japan|BoJ Statement 2");
   assert.equal(calls, 2);
 });
 
@@ -64,7 +87,7 @@ test("concurrent forced refreshes bypass a fresh cache once and share the provid
       calls += 1;
       if (calls === 1) {
         return Promise.resolve([
-          { CalendarId: "initial", Date: "2026-09-02T12:00:00", Country: "Japan", Event: "Initial", Importance: 3 },
+          { date: "2026-09-02", time: "12:00", country: "Japan", title: "Initial", impact: "high", type: "economic" },
         ]);
       }
       return refresh.promise;
@@ -78,12 +101,12 @@ test("concurrent forced refreshes bypass a fresh cache once and share the provid
 
   assert.equal(calls, 2);
   refresh.resolve([
-    { CalendarId: "refreshed", Date: "2026-09-02T12:00:00", Country: "Japan", Event: "Refreshed", Importance: 3 },
+    { date: "2026-09-02", time: "12:00", country: "Japan", title: "Refreshed", impact: "high", type: "economic" },
   ]);
   const [firstResult, secondResult] = await Promise.all([first, second]);
 
-  assert.equal(firstResult.events[0].id, "refreshed");
-  assert.equal(secondResult.events[0].id, "refreshed");
+  assert.equal(firstResult.events[0].id, "2026-09-02|12:00|Japan|Refreshed");
+  assert.equal(secondResult.events[0].id, "2026-09-02|12:00|Japan|Refreshed");
 });
 
 test("a forced caller joins an older same-week load so a would-be newer failure cannot discard its success", async () => {
@@ -106,17 +129,17 @@ test("a forced caller joins an older same-week load so a would-be newer failure 
   );
   if (calls > 1) wouldBeNewer.reject(new Error("newer forced request failed"));
   older.resolve([
-    { CalendarId: "valid-older", Date: "2026-09-02T12:00:00", Country: "Canada", Event: "Valid older load", Importance: 3 },
+    { date: "2026-09-02", time: "12:00", country: "Canada", title: "Valid older load", impact: "high", type: "economic" },
   ]);
 
   const [olderResult, outcome] = await Promise.all([olderCall, forcedOutcome]);
 
   assert.equal(calls, 1);
   assert.equal(outcome.status, "fulfilled");
-  assert.equal(olderResult.events[0].id, "valid-older");
-  assert.equal(outcome.value.events[0].id, "valid-older");
+  assert.equal(olderResult.events[0].id, "2026-09-02|12:00|Canada|Valid older load");
+  assert.equal(outcome.value.events[0].id, "2026-09-02|12:00|Canada|Valid older load");
   const cached = await service.getCurrentWeek();
-  assert.equal(cached.events[0].id, "valid-older");
+  assert.equal(cached.events[0].id, "2026-09-02|12:00|Canada|Valid older load");
   assert.equal(calls, 1);
 });
 
@@ -131,7 +154,7 @@ test("overlapping UTC week loads retain separate cache slots when the older week
       if (calls === 1) return oldWeek.promise;
       if (calls === 2) return newWeek.promise;
       return Promise.resolve([
-        { CalendarId: "unexpected-refetch", Date: "2026-09-06T12:00:00", Country: "Japan", Event: "Unexpected", Importance: 3 },
+        { date: "2026-09-06", time: "12:00", country: "Japan", title: "Unexpected", impact: "high", type: "economic" },
       ]);
     },
   };
@@ -141,18 +164,18 @@ test("overlapping UTC week loads retain separate cache slots when the older week
   currentTime = new Date("2026-09-06T00:00:01.000Z");
   const newWeekCall = service.getCurrentWeek();
   newWeek.resolve([
-    { CalendarId: "new-week", Date: "2026-09-06T12:00:00", Country: "Japan", Event: "New week", Importance: 3 },
+    { date: "2026-09-06", time: "12:00", country: "Japan", title: "New week", impact: "high", type: "economic" },
   ]);
   const newWeekResult = await newWeekCall;
   oldWeek.resolve([
-    { CalendarId: "old-week", Date: "2026-09-05T12:00:00", Country: "Japan", Event: "Old week", Importance: 3 },
+    { date: "2026-09-05", time: "12:00", country: "Japan", title: "Old week", impact: "high", type: "economic" },
   ]);
   await oldWeekCall;
 
   const cachedNewWeek = await service.getCurrentWeek();
 
-  assert.equal(newWeekResult.events[0].id, "new-week");
-  assert.equal(cachedNewWeek.events[0].id, "new-week");
+  assert.equal(newWeekResult.events[0].id, "2026-09-06|12:00|Japan|New week");
+  assert.equal(cachedNewWeek.events[0].id, "2026-09-06|12:00|Japan|New week");
   assert.deepEqual(cachedNewWeek.range, { from: "2026-09-06", to: "2026-09-12" });
   assert.equal(calls, 2);
 });
@@ -162,7 +185,7 @@ test("service returns the last successful week as stale when revalidation fails"
   const provider = {
     async fetchWeek() {
       if (fail) throw new Error("offline");
-      return [{ CalendarId: "9", Date: "2026-09-02T12:00:00", Country: "Canada", Event: "Rate Decision", Importance: 3, Actual: null, Forecast: null, Previous: null }];
+      return [{ date: "2026-09-02", time: "12:00", country: "Canada", title: "Rate Decision", impact: "high", type: "economic" }];
     },
   };
   const service = createMarketNewsService({ provider, now: () => new Date("2026-09-02T12:00:00Z"), cacheTtlMs: 0 });
@@ -172,7 +195,7 @@ test("service returns the last successful week as stale when revalidation fails"
   const result = await service.getCurrentWeek();
 
   assert.equal(result.state, "stale");
-  assert.equal(result.events[0].id, "9");
+  assert.equal(result.events[0].id, "2026-09-02|12:00|Canada|Rate Decision");
 });
 
 test("simultaneous calls for one week share an in-flight provider request", async () => {
@@ -189,20 +212,20 @@ test("simultaneous calls for one week share an in-flight provider request", asyn
   const first = service.getCurrentWeek();
   const second = service.getCurrentWeek();
   for (const resolve of resolveProviders) {
-    resolve([{ CalendarId: "10", Date: "2026-09-02T12:00:00", Country: "Australia", Event: "GDP", Importance: 2, Actual: null, Forecast: null, Previous: null }]);
+    resolve([{ date: "2026-09-02", time: "12:00", country: "Australia", title: "GDP", impact: "medium", type: "economic" }]);
   }
   const [firstResult, secondResult] = await Promise.all([first, second]);
 
   assert.equal(calls, 1);
-  assert.equal(firstResult.events[0].id, "10");
-  assert.equal(secondResult.events[0].id, "10");
+  assert.equal(firstResult.events[0].id, "2026-09-02|12:00|Australia|GDP");
+  assert.equal(secondResult.events[0].id, "2026-09-02|12:00|Australia|GDP");
 });
 
 test("a new week does not reuse the prior week's cached result", async () => {
   let calls = 0;
   let currentTime = new Date("2026-09-05T12:00:00Z");
   const provider = {
-    fetchWeek: async () => [{ CalendarId: String(++calls), Date: "2026-09-05T12:00:00", Country: "Switzerland", Event: "CPI", Importance: 2, Actual: null, Forecast: null, Previous: null }],
+    fetchWeek: async () => [{ date: "2026-09-05", time: "12:00", country: "Switzerland", title: `CPI ${++calls}`, impact: "medium", type: "economic" }],
   };
   const service = createMarketNewsService({ provider, now: () => currentTime });
 
@@ -210,8 +233,8 @@ test("a new week does not reuse the prior week's cached result", async () => {
   currentTime = new Date("2026-09-06T12:00:00Z");
   const nextWeek = await service.getCurrentWeek();
 
-  assert.equal(first.events[0].id, "1");
-  assert.equal(nextWeek.events[0].id, "2");
+  assert.equal(first.events[0].id, "2026-09-05|12:00|Switzerland|CPI 1");
+  assert.equal(nextWeek.events[0].id, "2026-09-05|12:00|Switzerland|CPI 2");
   assert.deepEqual(nextWeek.range, { from: "2026-09-06", to: "2026-09-12" });
   assert.equal(calls, 2);
 });

@@ -1,13 +1,6 @@
-const DEFAULT_BASE_URL = "https://api.tradingeconomics.com";
+const DEFAULT_BASE_URL = "https://www.economicium.com";
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const MAX_REQUEST_TIMEOUT_MS = 30_000;
-
-export class MarketNewsConfigurationError extends Error {
-  constructor() {
-    super("Trading Economics API key is not configured");
-    this.name = "MarketNewsConfigurationError";
-  }
-}
 
 export class MarketNewsProviderError extends Error {
   constructor(message = "Economic calendar provider is unavailable") {
@@ -16,8 +9,7 @@ export class MarketNewsProviderError extends Error {
   }
 }
 
-export function createTradingEconomicsCalendarProvider({
-  apiKey = process.env.TRADING_ECONOMICS_API_KEY,
+export function createEconomiciumCalendarProvider({
   fetchImpl = globalThis.fetch,
   baseUrl = DEFAULT_BASE_URL,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
@@ -30,14 +22,10 @@ export function createTradingEconomicsCalendarProvider({
 
   return {
     async fetchWeek({ from, to }) {
-      if (!apiKey?.trim()) throw new MarketNewsConfigurationError();
-
-      const url = new URL(`/calendar/country/All/${from}/${to}`, baseUrl);
-      url.searchParams.set("c", apiKey);
-      url.searchParams.set("f", "json");
-
+      const url = new URL("/api/calendar", baseUrl);
       const abortController = new AbortController();
       let timeout;
+
       try {
         timeout = setTimeoutImpl(() => abortController.abort(), boundedTimeoutMs);
         const response = await fetchImpl(url, {
@@ -46,16 +34,11 @@ export function createTradingEconomicsCalendarProvider({
         });
         if (!response.ok) throw new MarketNewsProviderError();
 
-        const rows = await response.json();
-        if (!Array.isArray(rows)) throw new MarketNewsProviderError();
-        return rows;
+        const payload = await response.json();
+        if (!Array.isArray(payload?.events)) throw new MarketNewsProviderError();
+        return payload.events.filter((event) => event?.date >= from && event.date <= to);
       } catch (error) {
-        if (
-          error instanceof MarketNewsConfigurationError ||
-          error instanceof MarketNewsProviderError
-        ) {
-          throw error;
-        }
+        if (error instanceof MarketNewsProviderError) throw error;
         throw new MarketNewsProviderError();
       } finally {
         if (timeout !== undefined) clearTimeoutImpl(timeout);

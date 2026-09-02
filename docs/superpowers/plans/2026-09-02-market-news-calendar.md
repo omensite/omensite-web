@@ -1,5 +1,7 @@
 # OMENSITE Market News Calendar Implementation Plan
 
+> Source amendment (2026-09-02): the paid Trading Economics adapter described below was subsequently replaced with Economicium's public, keyless JSON calendar at the user's direction. The plan remains as an implementation record; current behavior is documented in the design specification and README.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the empty Market News screen with a live, full-width, terminal-styled current-week economic calendar containing only medium- and high-impact events.

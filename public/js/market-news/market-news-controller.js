@@ -1,9 +1,5 @@
 const instances = new WeakMap();
 
-function displayValue(value) {
-  return value === null || value === undefined || value === "" ? "--" : String(value);
-}
-
 function createEventRow(documentRef, event) {
   const row = documentRef.createElement("article");
   row.className = `calendar-event calendar-event-${event.importance}`;
@@ -18,9 +14,6 @@ function createEventRow(documentRef, event) {
     ["span", event.importance.toUpperCase(), "calendar-impact", "IMPACT"],
     ["span", event.market, "calendar-market", "MARKET"],
     ["span", event.title, "calendar-event-title", "EVENT"],
-    ["span", displayValue(event.actual), "calendar-value", "ACTUAL"],
-    ["span", displayValue(event.forecast), "calendar-value", "FORECAST"],
-    ["span", displayValue(event.previous), "calendar-value", "PREVIOUS"],
   ];
   for (const [tag, text, className, label] of fields) {
     const node = documentRef.createElement(tag);

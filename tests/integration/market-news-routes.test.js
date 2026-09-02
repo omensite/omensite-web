@@ -13,9 +13,7 @@ const liveCalendar = {
     country: "United States",
     title: "Non Farm Payrolls",
     importance: "high",
-    actual: null,
-    forecast: "75K",
-    previous: "62K",
+    source: "ECONOMICIUM / OFFICIAL SCHEDULES",
   }],
   updatedAt: "2026-09-02T12:00:00.000Z",
   range: { from: "2026-08-30", to: "2026-09-05" },
@@ -47,7 +45,9 @@ test("market news renders provider data in full and fragment responses", async (
   assert.doesNotMatch(response.text, /TIMES LOCAL/);
   assert.match(response.text, />HIGH</);
   assert.match(response.text, />Non Farm Payrolls</);
-  assert.match(response.text, />75K</);
+  assert.match(response.text, /SOURCE :: ECONOMICIUM \/ OFFICIAL SCHEDULES/);
+  assert.match(response.text, /href="https:\/\/www\.economicium\.com\/economic-calendar\/"/);
+  assert.doesNotMatch(response.text, /ACTUAL ::|FORECAST ::|PREVIOUS ::/);
   assert.doesNotMatch(response.text, /iframe|financialjuice|twitter-timeline|x\\.com/i);
   await agent.get("/market-news").set("X-Omensite-Fragment", "1").expect(200)
     .expect(/data-market-news/).expect((response) => assert.doesNotMatch(response.text, /data-app-shell/));
@@ -73,21 +73,18 @@ test("server-rendered rows expose explicit field labels and semantic day-ready v
   const row = dom.window.document.querySelector('[data-event-id="42"]');
 
   assert.deepEqual([...row.querySelectorAll(".calendar-field-label")].map((label) => label.textContent), [
-    "TIME :: ", "IMPACT :: ", "MARKET :: ", "EVENT :: ", "ACTUAL :: ", "FORECAST :: ", "PREVIOUS :: ",
+    "TIME :: ", "IMPACT :: ", "MARKET :: ", "EVENT :: ",
   ]);
   assert.equal(row.querySelector("[data-event-time]").dataset.field, "TIME");
   assert.equal(row.querySelector("[data-event-time-value]").textContent, "12:30Z");
   dom.window.close();
 });
 
-test("server rendering escapes markup-like provider identifiers, titles, and values", async () => {
+test("server rendering escapes markup-like provider identifiers and titles", async () => {
   const event = {
     ...liveCalendar.events[0],
     id: 'event\"><img data-provider-injected="id">',
     title: '<img data-provider-injected="title" src=x>',
-    actual: '<script data-provider-injected="actual">bad()</script>',
-    forecast: '<svg data-provider-injected="forecast"></svg>',
-    previous: '<b data-provider-injected="previous">unsafe</b>',
   };
   const agent = await authenticatedAgent({
     getCurrentWeek: async () => ({ ...liveCalendar, events: [event] }),
@@ -100,9 +97,7 @@ test("server rendering escapes markup-like provider identifiers, titles, and val
   assert.equal(documentRef.querySelector("[data-provider-injected]"), null);
   assert.equal(row.dataset.eventId, event.id);
   assert.equal(row.querySelector(".calendar-event-title [data-event-field-value]").textContent, event.title);
-  assert.deepEqual([...row.querySelectorAll(".calendar-value [data-event-field-value]")].map((value) => value.textContent), [
-    event.actual, event.forecast, event.previous,
-  ]);
+  assert.equal(row.querySelector(".calendar-value"), null);
   dom.window.close();
 });
 

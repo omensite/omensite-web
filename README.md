@@ -74,11 +74,11 @@ npm run dev
 
 ### Live market calendar
 
-To enable the live market calendar, copy `.env.example` to `.env`, replace the sample value with your licensed Trading Economics API key, and restart the app.
+The calendar connects to Economicium's public JSON calendar automatically. No account, API key, or environment configuration is required.
 
-Missing or invalid credentials leave the terminal interface available with `[ CALENDAR DATA LINK OFFLINE ]`.
+OMENSITE keeps only high- and medium-impact economic releases, maps each country to its affected currency, converts release times to the workstation's timezone, and groups the results by day. The server caches a successful response for 24 hours; the terminal's refresh control can request an immediate update. If the source is temporarily unavailable, the last successful in-memory result remains visible as stale data.
 
-Production operators must obtain Trading Economics display and distribution rights appropriate to their deployment.
+The source provides release schedules and impact classifications derived from official public or openly licensed sources. It deliberately does not provide proprietary consensus forecasts, actual releases, or previous values. See the [Economicium calendar](https://www.economicium.com/economic-calendar/) and its [public JSON endpoint](https://www.economicium.com/api/calendar).
 
 ## Demo access
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-02  
 **Target version:** v0.1.0  
-**Status:** Approved design awaiting implementation planning
+**Status:** Implemented; amended to use a public keyless source
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The page contains:
 - Impact controls for `ALL`, `HIGH`, and `MEDIUM`.
 - Market controls for `ALL`, `USD`, `EUR`, `GBP`, `JPY`, `CAD`, `AUD`, `NZD`, `CHF`, and `CNY`.
 - A current-week event stream grouped by local calendar day.
-- Rows containing local time, market/currency, event name, actual, forecast, and previous values.
+- Rows containing local time, market/currency, impact, and event name.
 - A manual refresh control.
 
 High-impact events use the existing red danger treatment. Medium-impact events use orange. Color will not be the only distinction: rows also include the text labels `HIGH` or `MEDIUM` for accessibility and clarity.
@@ -33,30 +33,29 @@ The route continues to participate in OMENSITE's existing fragment-navigation sy
 
 ## Data Source and Licensing Boundary
 
-Trading Economics is the planned paid provider. The integration will use its official economic-calendar API and licensed credentials. Provider access will be isolated behind an application-owned adapter so a future provider can be substituted without changing the controller, view, or browser code.
+Economicium is the selected public provider. The integration uses its free JSON calendar endpoint without an account or API key. Provider access remains isolated behind an application-owned adapter so a future provider can be substituted without changing the controller, view, or browser code.
 
-Only provider-supported data will be requested and displayed. The application will not scrape Forex Factory, FinancialJuice, X, or another website. The operator is responsible for obtaining a Trading Economics plan whose display and distribution terms match the eventual deployment model.
+Only provider-supported data will be requested and displayed. The application will not scrape Forex Factory, FinancialJuice, X, or another website. Economicium states that its calendar is assembled from official public-domain or openly licensed schedules and publishes the JSON specifically for reuse in applications.
 
-The credential will be read from `TRADING_ECONOMICS_API_KEY` on the server and will never be included in HTML, browser JavaScript, logs, tests, or committed files.
+No provider credential is required. Calendar requests are made server-side and cached for 24 hours.
 
 ## MVC Architecture
 
 ### Model and services
 
-`TradingEconomicsCalendarProvider` owns external HTTP communication. It requests the current week's events, validates the response shape, and converts provider failures into typed application errors.
+`EconomiciumCalendarProvider` owns external HTTP communication. It requests the public calendar, selects the current week's events, validates the response shape, and converts provider failures into typed application errors.
 
 `MarketNewsService` owns application rules. It:
 
 - Requests and caches the current week's calendar.
-- Keeps only provider importance levels 2 and 3.
-- Normalizes importance 2 to `medium` and 3 to `high`.
+- Keeps only provider impact levels `medium` and `high`.
 - Maps supported countries to the displayed market/currency code.
 - Sorts events chronologically.
 - Returns a stable application-owned event shape.
 
-The normalized shape contains an event identifier, ISO timestamp, currency, country, title, importance, actual, forecast, and previous value. Missing values remain null and render as `--` rather than being invented.
+The normalized shape contains a deterministic event identifier, ISO timestamp, currency, country, title, importance, and source. Consensus forecasts, released actuals, and previous values are not present in the public feed and are not invented.
 
-The service maintains a shared, short-lived/single-flight cache so multiple browsers do not cause duplicate provider requests. A 60-second freshness window balances timely actual values with API usage. If refreshing fails after a prior success, the service may return the last successful data marked as stale.
+The service maintains a shared, single-flight cache so multiple browsers do not cause duplicate provider requests. A 24-hour freshness window meets the once-daily update requirement. If refreshing fails after a prior success, the service returns the last successful data marked as stale.
 
 ### Controller
 
@@ -85,7 +84,6 @@ Day grouping is calculated from the displayed local date. An event near midnight
 - **No filter matches:** The screen reads `[ NO EVENTS MATCH ACTIVE FILTERS ]`.
 - **Stale data:** Cached events remain visible with a clear `STALE DATA` status and the last successful update time.
 - **Unavailable with no cache:** The calendar shell remains visible and reports `[ CALENDAR DATA LINK OFFLINE ]` with a retry control.
-- **Missing credentials:** The browser receives a generic unavailable state. The server reports the configuration issue without printing the credential.
 
 All states preserve page structure and terminal styling. Provider error bodies and stack traces are never sent to the browser.
 
@@ -95,9 +93,9 @@ Filters are real buttons with pressed-state semantics. Status changes use a rest
 
 ## Testing Strategy
 
-Unit tests will cover provider normalization, importance filtering, country-to-market mapping, chronological sorting, missing numeric values, cache reuse, stale-cache fallback, and typed provider failures.
+Unit tests will cover provider normalization, impact filtering, country-to-market mapping, chronological sorting, daily cache reuse, stale-cache fallback, and typed provider failures.
 
-Controller and route integration tests will cover full-page rendering, fragment rendering, the normalized JSON endpoint, missing credentials, empty data, and upstream failure behavior. External HTTP requests will be mocked; the test suite will not require a paid credential or network access.
+Controller and route integration tests will cover full-page rendering, fragment rendering, the normalized JSON endpoint, empty data, and upstream failure behavior. External HTTP requests will be mocked; the test suite will not require network access.
 
 Browser tests will cover combined impact/market filters, visible counts, local-time/day grouping, manual refresh, loading/error/stale states, and safe remounting after fragment navigation.
 
@@ -105,18 +103,18 @@ Existing navigation and fidelity tests will be updated to assert the new termina
 
 ## Configuration and Documentation
 
-An example environment file will document `TRADING_ECONOMICS_API_KEY` with a placeholder only. The README will explain how to configure live calendar access, what happens when the key is absent, and that the data provider license must cover the intended deployment.
+The README will document that calendar access requires no account or API key, how daily caching works, and that consensus forecasts and released values are outside the source's public dataset.
 
 No database changes, Discord SSO work, journal integration, alert changes, or social feed work are included in this feature.
 
 ## Acceptance Criteria
 
-1. Market News displays live current-week Trading Economics events when a valid key is configured.
+1. Market News displays live current-week Economicium events without account configuration.
 2. Only high- and medium-impact events reach the rendered calendar.
 3. Users can combine impact and supported-market filters without navigation or reloads.
 4. All calendar content and states look native to the OMENSITE terminal interface.
 5. Direct loads and fragment navigation both render correctly and retain seamless glitch transitions.
-6. Local times, values, refresh status, stale data, empty results, and failures are presented accurately.
-7. No provider credential or raw provider error is exposed to the browser.
+6. Local times, refresh status, stale data, empty results, and failures are presented accurately.
+7. No raw provider error is exposed to the browser.
 8. No FinancialJuice/X content or embed is present.
 9. Automated tests pass without live network access.

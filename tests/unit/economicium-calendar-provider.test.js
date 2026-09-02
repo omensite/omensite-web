@@ -1,35 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  createTradingEconomicsCalendarProvider,
-  MarketNewsConfigurationError,
+  createEconomiciumCalendarProvider,
   MarketNewsProviderError,
-} from "../../src/providers/trading-economics-calendar-provider.js";
+} from "../../src/providers/economicium-calendar-provider.js";
 
-test("provider requires a configured API key before making a request", async () => {
-  let requested = false;
-  const provider = createTradingEconomicsCalendarProvider({
-    apiKey: "",
-    fetchImpl: async () => {
-      requested = true;
-      return new Response("[]");
-    },
-  });
-
-  await assert.rejects(
-    provider.fetchWeek({ from: "2026-08-30", to: "2026-09-05" }),
-    MarketNewsConfigurationError,
-  );
-  assert.equal(requested, false);
-});
-
-test("provider requests the official date-range endpoint and returns JSON rows", async () => {
+test("provider requests the public calendar without credentials and returns the requested week", async () => {
   const calls = [];
-  const provider = createTradingEconomicsCalendarProvider({
-    apiKey: "account:key",
+  const provider = createEconomiciumCalendarProvider({
     fetchImpl: async (url, options) => {
       calls.push({ url: new URL(url), options });
-      return new Response(JSON.stringify([{ CalendarId: "42" }]), {
+      return new Response(JSON.stringify({ events: [
+        { date: "2026-08-29", title: "Outside range" },
+        { date: "2026-08-30", title: "Inside range" },
+        { date: "2026-09-05", title: "Range boundary" },
+        { date: "2026-09-06", title: "Outside range" },
+      ] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -38,20 +24,20 @@ test("provider requests the official date-range endpoint and returns JSON rows",
 
   const rows = await provider.fetchWeek({ from: "2026-08-30", to: "2026-09-05" });
 
-  assert.deepEqual(rows, [{ CalendarId: "42" }]);
-  assert.equal(calls[0].url.pathname, "/calendar/country/All/2026-08-30/2026-09-05");
-  assert.equal(calls[0].url.searchParams.get("c"), "account:key");
-  assert.equal(calls[0].url.searchParams.get("f"), "json");
+  assert.deepEqual(rows.map((row) => row.title), ["Inside range", "Range boundary"]);
+  assert.equal(calls[0].url.origin, "https://www.economicium.com");
+  assert.equal(calls[0].url.pathname, "/api/calendar");
+  assert.equal(calls[0].url.search, "");
   assert.equal(calls[0].options.headers.Accept, "application/json");
+  assert.equal(calls[0].options.headers.Authorization, undefined);
 });
 
 test("provider converts HTTP and malformed-payload failures to a safe error", async () => {
   for (const response of [
     new Response("upstream secret detail", { status: 429 }),
-    new Response(JSON.stringify({ message: "not an array" }), { status: 200 }),
+    new Response(JSON.stringify({ events: "not an array" }), { status: 200 }),
   ]) {
-    const provider = createTradingEconomicsCalendarProvider({
-      apiKey: "account:key",
+    const provider = createEconomiciumCalendarProvider({
       fetchImpl: async () => response,
     });
     await assert.rejects(
@@ -65,8 +51,7 @@ test("provider aborts a bounded request timeout and exposes only a safe typed er
   let abortSignal;
   let triggerTimeout;
   const clearedTimers = [];
-  const provider = createTradingEconomicsCalendarProvider({
-    apiKey: "account:key",
+  const provider = createEconomiciumCalendarProvider({
     requestTimeoutMs: 250,
     setTimeoutImpl(callback, delay) {
       assert.equal(delay, 250);
@@ -80,7 +65,7 @@ test("provider aborts a bounded request timeout and exposes only a safe typed er
       abortSignal = options.signal;
       return new Promise((_resolve, reject) => {
         abortSignal?.addEventListener("abort", () => {
-          reject(new DOMException("upstream URL/key/body detail", "AbortError"));
+          reject(new DOMException("upstream URL/body detail", "AbortError"));
         }, { once: true });
       });
     },
@@ -93,7 +78,7 @@ test("provider aborts a bounded request timeout and exposes only a safe typed er
   await assert.rejects(request, (error) => {
     assert.ok(error instanceof MarketNewsProviderError);
     assert.equal(error.message, "Economic calendar provider is unavailable");
-    assert.doesNotMatch(error.message, /URL|key|body/i);
+    assert.doesNotMatch(error.message, /URL|body/i);
     return true;
   });
   assert.equal(abortSignal.aborted, true);

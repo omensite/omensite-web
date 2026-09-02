@@ -9,7 +9,7 @@ import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
 import { createJournalRoutes } from "./routes/journal-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
-import { createTradingEconomicsCalendarProvider } from "./providers/trading-economics-calendar-provider.js";
+import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +20,7 @@ export function createApp({
   trustProxy,
   authService = createAuthService(),
   marketNewsService = createMarketNewsService({
-    provider: createTradingEconomicsCalendarProvider(),
+    provider: createEconomiciumCalendarProvider(),
   }),
   configureRoutes,
   logger = console,
