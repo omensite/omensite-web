@@ -2,6 +2,7 @@ import { createNavigationController } from "./navigation-controller.js";
 import { initializeJournalPage } from "./journal/journal-page-controller.js";
 import { LocalStorageJournalRepository } from "./journal/local-storage-journal-repository.js";
 import { createJournalService } from "./journal/journal-service.js";
+import { initializeMarketNewsPage } from "./market-news/market-news-controller.js";
 import { startSphereRenderer } from "./sphere-renderer.js";
 import { createTransitionController } from "./transition-controller.js";
 import { createDrawerController, setActiveNavigation, startStatusUpdates } from "./ui-utils.js";
@@ -62,12 +63,18 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
   );
   const journalPageState = { newEntry: null, screenshotCount: 0 };
   let navigator;
+  let disposeActiveRoute = () => {};
   const initializeShellPage = (root, route) => {
+    disposeActiveRoute();
+    disposeActiveRoute = () => {};
     setActiveNavigation(documentRef, route.key);
     drawer.close();
     hydrateJournalCount(root, service);
     if (route.key.startsWith("journal")) {
       initializeJournalPage(root, { ...service, pageState: journalPageState, navigate: (path) => navigator.navigate(path) });
+    }
+    if (route.key === "market-news") {
+      disposeActiveRoute = initializeMarketNewsPage(root, { fetchImpl, windowRef }).dispose;
     }
     initializePageInteractions(root, { showToast: (message) => showTerminalToast(documentRef, message) });
     initializePage(root, route);
@@ -104,6 +111,7 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
   const instance = {
     navigator,
     dispose() {
+      disposeActiveRoute();
       navigator.dispose();
       drawer.dispose();
       stopSpheres();

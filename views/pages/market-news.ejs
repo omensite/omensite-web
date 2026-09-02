@@ -6,13 +6,13 @@
     <header class="calendar-console-head">
       <div>
         <p class="panel-kicker" id="market-calendar-title">&gt; ECONOMIC_CALENDAR.EXE</p>
-        <p class="calendar-range">WEEK :: <%= calendar.range ? calendar.range.from + " / " + calendar.range.to : "UNAVAILABLE" %> :: TIMES UTC</p>
+        <p class="calendar-range">WEEK :: <%= calendar.range ? calendar.range.from + " / " + calendar.range.to : "UNAVAILABLE" %> :: <span data-calendar-timezone>TIMES UTC</span></p>
       </div>
       <button class="terminal-button" type="button" data-calendar-refresh>[ REFRESH FEED ]</button>
     </header>
 
     <div class="calendar-status" role="status" aria-live="polite" data-calendar-status>
-      <span>LINK :: <%= calendar.state.toUpperCase() %></span>
+      <span data-calendar-link-status>LINK :: <%= calendar.state.toUpperCase() %></span>
       <span>VISIBLE :: <strong data-calendar-count><%= calendar.events.length %></strong></span>
       <span>UPDATED :: <time data-calendar-updated datetime="<%= calendar.updatedAt || "" %>"><%= calendar.updatedAt || "--" %></time></span>
     </div>

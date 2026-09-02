@@ -8,6 +8,19 @@ const homeFragment = `
     <div class="stat-value muted" data-journal-count>0</div>
   </section>`;
 
+const marketNewsFragment = `
+  <section data-route-view data-route-key="market-news" data-market-news data-calendar-state="live">
+    <span data-calendar-timezone>TIMES UTC</span>
+    <button data-calendar-refresh></button>
+    <span data-calendar-count>0</span>
+    <span data-calendar-status></span>
+    <time data-calendar-updated></time>
+    <div data-calendar-events></div>
+    <div data-calendar-empty hidden></div>
+    <div data-calendar-filter-empty hidden></div>
+    <div data-calendar-offline hidden></div>
+  </section>`;
+
 test("home journal count hydrates from legacy local entries after full and fragment renders", async () => {
   const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, {
     url: "http://localhost/home",
@@ -56,4 +69,46 @@ test("home journal count retains accepted muted styling at zero", () => {
   assert.equal(count.classList.contains("muted"), true);
   instance.dispose();
   dom.window.close();
+});
+
+test("navigating away from Market News clears its scheduled refresh", async (t) => {
+  const dom = new JSDOM(`<div data-shell-body><main data-main>${marketNewsFragment}</main></div>`, {
+    url: "http://localhost/market-news",
+  });
+  dom.window.matchMedia = () => ({ matches: true });
+  const intervals = [];
+  const cleared = [];
+  const setInterval = dom.window.setInterval.bind(dom.window);
+  const clearInterval = dom.window.clearInterval.bind(dom.window);
+  dom.window.setInterval = (callback, delay) => {
+    const id = setInterval(callback, delay);
+    intervals.push({ id, delay });
+    return id;
+  };
+  dom.window.clearInterval = (id) => {
+    cleared.push(id);
+    clearInterval(id);
+  };
+  const instance = initializeAppShell({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async () => new Response(homeFragment, {
+      status: 200,
+      headers: {
+        "X-Omensite-Path": "/home",
+        "X-Omensite-Title": "DASHBOARD",
+        "X-Omensite-Key": "home",
+      },
+    }),
+  });
+  t.after(() => {
+    instance.dispose();
+    dom.window.close();
+  });
+  const refreshInterval = intervals.find(({ delay }) => delay === 60_000);
+
+  await instance.navigator.navigate("/home");
+
+  assert.ok(refreshInterval);
+  assert.equal(cleared.includes(refreshInterval.id), true);
 });
