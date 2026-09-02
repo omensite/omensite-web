@@ -8,6 +8,8 @@ import { fragmentRequest } from "./middleware/fragment-request.js";
 import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
 import { createJournalRoutes } from "./routes/journal-routes.js";
+import { createMarketNewsService } from "./services/market-news-service.js";
+import { createTradingEconomicsCalendarProvider } from "./providers/trading-economics-calendar-provider.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +19,9 @@ export function createApp({
   environment = process.env.NODE_ENV ?? "development",
   trustProxy,
   authService = createAuthService(),
+  marketNewsService = createMarketNewsService({
+    provider: createTradingEconomicsCalendarProvider(),
+  }),
   configureRoutes,
   logger = console,
 } = {}) {
@@ -52,7 +57,7 @@ export function createApp({
   app.get("/login", (req, res) => req.session.operator ? res.redirect("/home") : res.render("layouts/login"));
   app.use("/auth", createAuthRoutes({ authService }));
   configureRoutes?.(app);
-  app.use(requireAuth, createPageRoutes());
+  app.use(requireAuth, createPageRoutes({ marketNewsService, logger }));
   app.use(requireAuth, createJournalRoutes());
 
   app.use((req, res) => res.status(404).render("pages/error", {

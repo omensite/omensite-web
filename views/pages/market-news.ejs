@@ -1,4 +1,17 @@
 <section class="route" data-route-view data-route-key="<%= page.route.key %>">
   <%- include("../partials/route-head", { page }) %>
-  <div class="chips"><button class="chip" type="button" data-news-filter="all">ALL</button><button class="chip" type="button" data-news-filter="red">RED</button><button class="chip" type="button" data-news-filter="orange">ORANGE</button></div><%- include("../partials/empty-state", { lines: ["[ NO EVENTS ON CALENDAR ]", "NEWS FEED ON STANDBY :: RED / ORANGE FOLDERS EMPTY"] }) %>
+  <div class="chips"><button class="chip" type="button" data-news-filter="all">ALL</button><button class="chip" type="button" data-news-filter="red">RED</button><button class="chip" type="button" data-news-filter="orange">ORANGE</button></div>
+  <section data-market-news data-calendar-state="<%= page.data.calendar.state %>">
+    <% if (page.data.calendar.state === "offline") { %>
+      <%- include("../partials/empty-state", { lines: ["[ CALENDAR DATA LINK OFFLINE ]", "NEWS FEED ON STANDBY :: TRY AGAIN LATER"] }) %>
+    <% } else if (page.data.calendar.events.length === 0) { %>
+      <%- include("../partials/empty-state", { lines: ["[ NO EVENTS ON CALENDAR ]", "NEWS FEED ON STANDBY :: RED / ORANGE FOLDERS EMPTY"] }) %>
+    <% } else { %>
+      <% for (const event of page.data.calendar.events) { %>
+        <article data-calendar-event data-event-id="<%= event.id %>">
+          <span><%= event.title %></span>
+        </article>
+      <% } %>
+    <% } %>
+  </section>
 </section>

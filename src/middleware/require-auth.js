@@ -3,7 +3,7 @@ export function requireAuth(req, res, next) {
     return next();
   }
 
-  if (req.get("X-Omensite-Fragment") === "1") {
+  if (req.get("X-Omensite-Fragment") === "1" || req.path.startsWith("/api/")) {
     return res.status(401).json({ error: "AUTH_REQUIRED", loginUrl: "/login" });
   }
 

@@ -4,8 +4,17 @@ import request from "supertest";
 import { JSDOM } from "jsdom";
 import { createApp } from "../../src/app.js";
 
+const marketNewsService = {
+  getCurrentWeek: async () => ({
+    state: "live",
+    events: [],
+    updatedAt: "2026-09-02T12:00:00.000Z",
+    range: { from: "2026-08-30", to: "2026-09-05" },
+  }),
+};
+
 test("protected clean routes render full documents and fragments", async () => {
-  const agent = request.agent(createApp({ sessionSecret: "test-secret" }));
+  const agent = request.agent(createApp({ sessionSecret: "test-secret", marketNewsService }));
   await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
 
   const response = await agent.get("/home").expect(200);
