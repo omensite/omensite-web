@@ -40,6 +40,8 @@ test("market news renders provider data in full and fragment responses", async (
   assert.match(response.text, /data-calendar-refresh/);
   assert.match(response.text, /data-event-id="42"/);
   assert.match(response.text, /data-impact="high"/);
+  assert.match(response.text, /TIMES UTC/);
+  assert.doesNotMatch(response.text, /TIMES LOCAL/);
   assert.match(response.text, />HIGH</);
   assert.match(response.text, />Non Farm Payrolls</);
   assert.match(response.text, />75K</);
