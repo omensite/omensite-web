@@ -50,7 +50,7 @@ Use this package shape, letting npm record resolved versions in `package-lock.js
 ```json
 {
   "name": "omensite-mvc",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
