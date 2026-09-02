@@ -29,16 +29,19 @@ test("production server errors omit stack traces", async () => {
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   try {
+    const diagnostics = [];
     const app = createApp({
       sessionSecret: "test-secret",
       authConfig: createDiscordAuthConfig(),
       sessionStore: new (await import("express-session")).default.MemoryStore(),
       configureRoutes(instance) { instance.get("/explode", () => { throw new Error("sensitive database detail"); }); },
-      logger: { error() {} },
+      logger: { error: (...values) => diagnostics.push(values) },
     });
     const response = await request(app).get("/explode").expect(500);
     assert.match(response.text, /500 :: INTERNAL TERMINAL ERROR/);
     assert.doesNotMatch(response.text, /sensitive database detail|Error:|at createApp/);
+    assert.deepEqual(diagnostics, [["Unhandled application error"]]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /sensitive database detail|Error:|at createApp/);
   } finally {
     if (previous === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previous;
@@ -46,7 +49,11 @@ test("production server errors omit stack traces", async () => {
 });
 
 test("headers-sent server errors are delegated to the next error handler", () => {
-  const app = createApp({ sessionSecret: "test-secret", logger: { error() {} } });
+  const diagnostics = [];
+  const app = createApp({
+    sessionSecret: "test-secret",
+    logger: { error: (...values) => diagnostics.push(values) },
+  });
   const errorHandler = app.router.stack.map((layer) => layer.handle).findLast((handle) => handle.length === 4);
   const expected = new Error("stream failed after response started");
   const delegated = [];
@@ -54,4 +61,6 @@ test("headers-sent server errors are delegated to the next error handler", () =>
   errorHandler(expected, {}, { headersSent: true }, (error) => delegated.push(error));
 
   assert.deepEqual(delegated, [expected]);
+  assert.deepEqual(diagnostics, [["Unhandled application error"]]);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /stream failed|Error:|stack/i);
 });

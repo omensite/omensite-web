@@ -160,7 +160,7 @@ export function createApp({
     message: "REQUESTED COORDINATE DOES NOT EXIST",
   }));
   app.use((error, req, res, next) => {
-    logger.error?.(error);
+    logger.error?.("Unhandled application error");
     if (res.headersSent) return next(error);
     res.status(500).render("pages/error", {
       fragment: req.isOmensiteFragment, status: 500, heading: "INTERNAL TERMINAL ERROR",

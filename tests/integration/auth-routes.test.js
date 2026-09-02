@@ -250,7 +250,7 @@ test("OAuth callback maps known auth/provider codes and forwards unexpected faul
   }
 
   const unexpected = Object.assign(new Error("private unexpected body"), { accessToken: "secret-token" });
-  const boundaryErrors = [];
+  const boundaryDiagnostics = [];
   const warnings = [];
   const authService = {
     beginDiscord: () => ({ state: "unexpected", authorizationUrl: "/discord" }),
@@ -261,7 +261,7 @@ test("OAuth callback maps known auth/provider codes and forwards unexpected faul
     authService,
     logger: {
       warn: (...values) => warnings.push(values),
-      error: (error) => boundaryErrors.push(error),
+      error: (...values) => boundaryDiagnostics.push(values),
     },
   }));
   await agent.get("/auth/discord");
@@ -269,7 +269,11 @@ test("OAuth callback maps known auth/provider codes and forwards unexpected faul
     .expect(500)
     .expect((response) => assert.doesNotMatch(response.text, /private unexpected body|secret-token|private-code/));
   assert.deepEqual(warnings, []);
-  assert.deepEqual(boundaryErrors, [unexpected]);
+  assert.deepEqual(boundaryDiagnostics, [["Unhandled application error"]]);
+  assert.doesNotMatch(
+    JSON.stringify(boundaryDiagnostics),
+    /private unexpected body|secret-token|private-code|accessToken|stack/i,
+  );
 });
 
 test("successful Discord callback regenerates and registers the session then renders completion", async () => {
