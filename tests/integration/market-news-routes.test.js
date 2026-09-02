@@ -32,7 +32,18 @@ test("market news renders provider data in full and fragment responses", async (
   const service = { getCurrentWeek: async () => liveCalendar };
   const agent = await authenticatedAgent(service);
 
-  await agent.get("/market-news").expect(200).expect(/data-app-shell/).expect(/Non Farm Payrolls/);
+  const response = await agent.get("/market-news").expect(200);
+  assert.match(response.text, /data-app-shell/);
+  assert.match(response.text, /data-market-news/);
+  assert.match(response.text, /data-calendar-impact="high"/);
+  assert.match(response.text, /data-calendar-market="usd"/);
+  assert.match(response.text, /data-calendar-refresh/);
+  assert.match(response.text, /data-event-id="42"/);
+  assert.match(response.text, /data-impact="high"/);
+  assert.match(response.text, />HIGH</);
+  assert.match(response.text, />Non Farm Payrolls</);
+  assert.match(response.text, />75K</);
+  assert.doesNotMatch(response.text, /iframe|financialjuice|twitter-timeline|x\\.com/i);
   await agent.get("/market-news").set("X-Omensite-Fragment", "1").expect(200)
     .expect(/data-market-news/).expect((response) => assert.doesNotMatch(response.text, /data-app-shell/));
 });
