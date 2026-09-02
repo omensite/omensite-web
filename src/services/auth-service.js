@@ -66,6 +66,7 @@ export function createAuthService({
       throw createAuthError("CREDENTIALS_REQUIRED", "Credentials required");
     }
 
+    rejectIfBanned(`demo:${normalizedUsername.toLowerCase()}`);
     const access = rolePolicy.fromRoleNames(demoRoles);
     const operator = buildOperator({
       identity: {

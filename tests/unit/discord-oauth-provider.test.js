@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDiscordOAuthProvider } from "../../src/providers/discord-oauth-provider.js";
+import { DiscordProviderError, createDiscordOAuthProvider } from "../../src/providers/discord-oauth-provider.js";
 
 test("authorization URL requests only identity and member scopes", () => {
   const provider = createDiscordOAuthProvider({
@@ -100,4 +100,130 @@ test("token revocation accepts Discord's empty successful response", async () =>
   });
 
   await provider.revokeToken({ token: "access" });
+});
+
+test("provider converts Discord HTTP failures to a safe typed error", async () => {
+  const provider = createDiscordOAuthProvider({
+    clientId: "client",
+    clientSecret: "secret",
+    redirectUri: "http://localhost/callback",
+    guildId: "guild",
+    fetchImpl: async () => Response.json({ message: "private Discord detail" }, { status: 503 }),
+  });
+
+  await assert.rejects(provider.exchangeCode({ code: "code" }), (error) => {
+    assert.ok(error instanceof DiscordProviderError);
+    assert.equal(error.code, "DISCORD_HTTP_ERROR");
+    assert.doesNotMatch(error.message, /private|code/i);
+    return true;
+  });
+});
+
+test("provider converts network and malformed-response failures to safe typed errors", async () => {
+  const sharedConfig = {
+    clientId: "client",
+    clientSecret: "secret",
+    redirectUri: "http://localhost/callback",
+    guildId: "guild",
+  };
+  const cases = [
+    {
+      name: "network failure",
+      fetchImpl: async () => { throw new Error("token=private-access"); },
+      code: "DISCORD_REQUEST_FAILED",
+    },
+    {
+      name: "malformed JSON",
+      fetchImpl: async () => new Response("not-json", { status: 200 }),
+      code: "DISCORD_REQUEST_FAILED",
+    },
+    {
+      name: "malformed token payload",
+      fetchImpl: async () => Response.json({ access_token: "access" }),
+      code: "DISCORD_INVALID_RESPONSE",
+    },
+  ];
+
+  for (const fixture of cases) {
+    const provider = createDiscordOAuthProvider({ ...sharedConfig, fetchImpl: fixture.fetchImpl });
+    await assert.rejects(provider.exchangeCode({ code: "code" }), (error) => {
+      assert.ok(error instanceof DiscordProviderError, fixture.name);
+      assert.equal(error.code, fixture.code, fixture.name);
+      assert.doesNotMatch(error.message, /private-access|code/i, fixture.name);
+      return true;
+    });
+  }
+});
+
+test("provider aborts a bounded timeout with a safe typed error", async () => {
+  let triggerTimeout;
+  let abortSignal;
+  const clearedTimers = [];
+  const provider = createDiscordOAuthProvider({
+    clientId: "client",
+    clientSecret: "secret",
+    redirectUri: "http://localhost/callback",
+    guildId: "guild",
+    requestTimeoutMs: 250,
+    setTimeoutImpl(callback, delay) {
+      assert.equal(delay, 250);
+      triggerTimeout = callback;
+      return "provider-timeout";
+    },
+    clearTimeoutImpl(timer) {
+      clearedTimers.push(timer);
+    },
+    fetchImpl: async (_url, options) => {
+      abortSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        abortSignal.addEventListener("abort", () => {
+          reject(new DOMException("private token detail", "AbortError"));
+        }, { once: true });
+      });
+    },
+  });
+
+  const request = provider.exchangeCode({ code: "code" });
+  triggerTimeout();
+
+  await assert.rejects(request, (error) => {
+    assert.ok(error instanceof DiscordProviderError);
+    assert.equal(error.code, "DISCORD_TIMEOUT");
+    assert.doesNotMatch(error.message, /private|code/i);
+    return true;
+  });
+  assert.equal(abortSignal.aborted, true);
+  assert.deepEqual(clearedTimers, ["provider-timeout"]);
+});
+
+test("refresh-token exchange returns a renewed server-side token record", async () => {
+  const calls = [];
+  const provider = createDiscordOAuthProvider({
+    clientId: "client",
+    clientSecret: "secret",
+    redirectUri: "http://localhost/callback",
+    guildId: "guild",
+    now: () => new Date("2026-09-02T12:00:00.000Z"),
+    fetchImpl: async (url, options) => {
+      calls.push({ url: String(url), options });
+      return Response.json({
+        access_token: "renewed-access",
+        token_type: "Bearer",
+        expires_in: 3600,
+        refresh_token: "renewed-refresh",
+        scope: "identify guilds.members.read",
+      });
+    },
+  });
+
+  const refreshed = await provider.refreshAccessToken({ refreshToken: "refresh" });
+
+  assert.deepEqual(refreshed, {
+    accessToken: "renewed-access",
+    refreshToken: "renewed-refresh",
+    expiresAt: "2026-09-02T13:00:00.000Z",
+  });
+  assert.equal(calls[0].url, "https://discord.com/api/v10/oauth2/token");
+  assert.equal(new URLSearchParams(calls[0].options.body).get("grant_type"), "refresh_token");
+  assert.equal(new URLSearchParams(calls[0].options.body).get("refresh_token"), "refresh");
 });
