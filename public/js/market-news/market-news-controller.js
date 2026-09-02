@@ -14,7 +14,7 @@ function createEventRow(documentRef, event) {
   row.dataset.impact = event.importance;
 
   const fields = [
-    ["time", "", "calendar-event-time"],
+    ["time", "", "calendar-event-time", "TIME"],
     ["span", event.importance.toUpperCase(), "calendar-impact", "IMPACT"],
     ["span", event.market, "calendar-market", "MARKET"],
     ["span", event.title, "calendar-event-title", "EVENT"],
@@ -25,11 +25,28 @@ function createEventRow(documentRef, event) {
   for (const [tag, text, className, label] of fields) {
     const node = documentRef.createElement(tag);
     node.className = className;
-    node.textContent = text;
-    if (label) node.dataset.field = label;
+    node.dataset.field = label;
+
+    const fieldLabel = documentRef.createElement("span");
+    fieldLabel.className = "calendar-field-label";
+    fieldLabel.textContent = `${label} :: `;
+    node.append(fieldLabel);
+
+    if (label === "IMPACT") {
+      const marker = documentRef.createElement("span");
+      marker.setAttribute("aria-hidden", "true");
+      marker.textContent = "●";
+      node.append(marker, documentRef.createTextNode(" "));
+    }
+
+    const value = documentRef.createElement("span");
+    value.dataset.eventFieldValue = "";
+    value.textContent = text;
+    node.append(value);
     if (tag === "time") {
       node.dataset.eventTime = "";
       node.dateTime = event.timestamp;
+      value.dataset.eventTimeValue = "";
     }
     row.append(node);
   }
@@ -45,19 +62,21 @@ function formatUpdatedTime(root, timestamp) {
   updated.textContent = Number.isNaN(date.getTime()) ? "--" : date.toLocaleString();
 }
 
-function groupRows(root, windowRef) {
+function groupRows(root, windowRef, { locale, timeZone } = {}) {
   const documentRef = root.ownerDocument;
   const eventsContainer = root.querySelector("[data-calendar-events]");
   if (!eventsContainer) return;
   const rows = [...eventsContainer.querySelectorAll("[data-calendar-event]")];
-  const timeFormatter = new windowRef.Intl.DateTimeFormat(undefined, {
+  const timeFormatter = new windowRef.Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
   });
-  const dayFormatter = new windowRef.Intl.DateTimeFormat(undefined, {
+  const dayFormatter = new windowRef.Intl.DateTimeFormat(locale, {
     weekday: "long",
     month: "short",
     day: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
   });
 
   rows.sort((left, right) => {
@@ -74,7 +93,8 @@ function groupRows(root, windowRef) {
     const label = valid ? dayFormatter.format(timestamp) : "DATE UNKNOWN";
     const eventTime = row.querySelector("[data-event-time]");
     if (eventTime) {
-      eventTime.textContent = valid ? timeFormatter.format(timestamp) : "--:--";
+      const eventTimeValue = eventTime.querySelector("[data-event-time-value]") ?? eventTime;
+      eventTimeValue.textContent = valid ? timeFormatter.format(timestamp) : "--:--";
       if (valid) eventTime.dateTime = timestamp.toISOString();
     }
     let day = days.get(label);
@@ -82,9 +102,11 @@ function groupRows(root, windowRef) {
       day = documentRef.createElement("section");
       day.className = "calendar-day";
       day.dataset.calendarDay = "";
-      const heading = documentRef.createElement("p");
+      const heading = documentRef.createElement("h3");
       heading.className = "calendar-day-label";
+      heading.id = `calendar-day-${days.size + 1}`;
       heading.textContent = label;
+      day.setAttribute("aria-labelledby", heading.id);
       day.append(heading);
       days.set(label, day);
       eventsContainer.append(day);
@@ -100,6 +122,8 @@ export function initializeMarketNewsPage(root, {
   fetchImpl = root.ownerDocument.defaultView.fetch.bind(root.ownerDocument.defaultView),
   windowRef = root.ownerDocument.defaultView,
   refreshIntervalMs = 60_000,
+  locale,
+  timeZone,
 } = {}) {
   if (instances.has(root)) return instances.get(root);
   const filters = { impact: "all", market: "all" };
@@ -162,14 +186,18 @@ export function initializeMarketNewsPage(root, {
     root.dataset.calendarState = calendar.state;
     formatUpdatedTime(root, calendar.updatedAt);
     setLinkStatus(calendar.state === "live" ? "LINK :: LIVE" : "LINK :: STALE DATA");
-    groupRows(root, windowRef);
+    groupRows(root, windowRef, { locale, timeZone });
     applyFilters();
   }
 
   function renderRefreshFailure() {
     const hasEvents = Boolean(root.querySelector("[data-calendar-event]"));
-    setLinkStatus("DATA LINK DEGRADED :: RETAINING LAST BUFFER");
-    if (!hasEvents) root.dataset.calendarState = "offline";
+    if (hasEvents) {
+      setLinkStatus("DATA LINK DEGRADED :: RETAINING LAST BUFFER");
+    } else {
+      root.dataset.calendarState = "offline";
+      setLinkStatus("LINK :: OFFLINE");
+    }
     applyFilters();
   }
 
@@ -207,7 +235,7 @@ export function initializeMarketNewsPage(root, {
     if (target.dataset.calendarMarket) selectFilter("market", target.dataset.calendarMarket);
   }
 
-  groupRows(root, windowRef);
+  groupRows(root, windowRef, { locale, timeZone });
   formatUpdatedTime(root);
   applyFilters();
   root.addEventListener("click", onClick);

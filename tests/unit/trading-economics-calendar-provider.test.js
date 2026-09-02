@@ -60,3 +60,42 @@ test("provider converts HTTP and malformed-payload failures to a safe error", as
     );
   }
 });
+
+test("provider aborts a bounded request timeout and exposes only a safe typed error", async () => {
+  let abortSignal;
+  let triggerTimeout;
+  const clearedTimers = [];
+  const provider = createTradingEconomicsCalendarProvider({
+    apiKey: "account:key",
+    requestTimeoutMs: 250,
+    setTimeoutImpl(callback, delay) {
+      assert.equal(delay, 250);
+      triggerTimeout = callback;
+      return "provider-timeout";
+    },
+    clearTimeoutImpl(timer) {
+      clearedTimers.push(timer);
+    },
+    fetchImpl: async (_url, options) => {
+      abortSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        abortSignal?.addEventListener("abort", () => {
+          reject(new DOMException("upstream URL/key/body detail", "AbortError"));
+        }, { once: true });
+      });
+    },
+  });
+
+  const request = provider.fetchWeek({ from: "2026-08-30", to: "2026-09-05" });
+
+  assert.equal(typeof triggerTimeout, "function");
+  triggerTimeout();
+  await assert.rejects(request, (error) => {
+    assert.ok(error instanceof MarketNewsProviderError);
+    assert.equal(error.message, "Economic calendar provider is unavailable");
+    assert.doesNotMatch(error.message, /URL|key|body/i);
+    return true;
+  });
+  assert.equal(abortSignal.aborted, true);
+  assert.deepEqual(clearedTimers, ["provider-timeout"]);
+});

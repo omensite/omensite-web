@@ -68,6 +68,38 @@ test("timestamps and day headers are formatted through the workstation timezone"
   dom.window.close();
 });
 
+test("local grouping honors an exact non-UTC midnight boundary", () => {
+  const { dom, root } = calendarFixture();
+  const rows = [...root.querySelectorAll("[data-calendar-event]")];
+  rows[0].dataset.timestamp = "2026-09-03T06:30:00.000Z";
+  rows[1].dataset.timestamp = "2026-09-03T07:30:00.000Z";
+  rows[2].remove();
+  const instance = initializeMarketNewsPage(root, {
+    windowRef: dom.window,
+    fetchImpl: async () => new Response(),
+    refreshIntervalMs: 0,
+    locale: "en-US",
+    timeZone: "America/Los_Angeles",
+  });
+
+  const days = [...root.querySelectorAll("[data-calendar-day]")];
+  assert.deepEqual(days.map((day) => day.querySelector(".calendar-day-label").textContent), [
+    "Wednesday, Sep 02",
+    "Thursday, Sep 03",
+  ]);
+  assert.deepEqual(rows.slice(0, 2).map((row) => row.querySelector("[data-event-time]").textContent), [
+    "11:30 PM",
+    "12:30 AM",
+  ]);
+  for (const day of days) {
+    const heading = day.querySelector(".calendar-day-label");
+    assert.equal(heading.tagName, "H3");
+    assert.equal(day.getAttribute("aria-labelledby"), heading.id);
+  }
+  instance.dispose();
+  dom.window.close();
+});
+
 test("initial hydration formats the updated timestamp locally and preserves its ISO datetime", () => {
   const { dom, root } = calendarFixture();
   const instance = initializeMarketNewsPage(root, {
@@ -132,6 +164,36 @@ test("manual refresh requests fresh data and renders it as text", async () => {
   dom.window.close();
 });
 
+test("dynamically rendered rows expose a real label for every field including time", async () => {
+  const { dom, root } = calendarFixture();
+  const instance = initializeMarketNewsPage(root, {
+    windowRef: dom.window,
+    refreshIntervalMs: 0,
+    fetchImpl: async () => new Response(JSON.stringify({
+      ok: true,
+      calendar: {
+        state: "live",
+        events: [{ id: "accessible", timestamp: "2026-09-04T15:00:00.000Z", market: "USD", country: "United States", title: "Payrolls", importance: "high", actual: "4.2%", forecast: "4.1%", previous: "4.0%" }],
+        updatedAt: "2026-09-02T12:01:00.000Z",
+        range: { from: "2026-08-30", to: "2026-09-05" },
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }),
+  });
+
+  root.querySelector("[data-calendar-refresh]").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  const row = root.querySelector('[data-event-id="accessible"]');
+  assert.deepEqual([...row.querySelectorAll(".calendar-field-label")].map((label) => label.textContent), [
+    "TIME :: ", "IMPACT :: ", "MARKET :: ", "EVENT :: ", "ACTUAL :: ", "FORECAST :: ", "PREVIOUS :: ",
+  ]);
+  assert.equal(row.querySelector("[data-event-time]").dataset.field, "TIME");
+  const dayHeading = row.closest("[data-calendar-day]").querySelector(".calendar-day-label");
+  assert.equal(dayHeading.tagName, "H3");
+  instance.dispose();
+  dom.window.close();
+});
+
 test("dispose clears polling and aborts an active refresh", async () => {
   const { dom, root } = calendarFixture();
   const signals = [];
@@ -187,6 +249,27 @@ test("failed refresh retains rows, reports degradation, and prevents overlap", a
   assert.equal(button.disabled, false);
   assert.equal(root.getAttribute("aria-busy"), "false");
   assert.equal(root.querySelector("[data-calendar-offline]").hidden, true);
+  instance.dispose();
+  dom.window.close();
+});
+
+test("failed refresh with an initially empty calendar reports the link offline", async () => {
+  const { dom, root } = calendarFixture();
+  root.querySelector("[data-calendar-events]").replaceChildren();
+  root.querySelector("[data-calendar-count]").textContent = "0";
+  const instance = initializeMarketNewsPage(root, {
+    windowRef: dom.window,
+    refreshIntervalMs: 0,
+    fetchImpl: async () => { throw new Error("network unavailable"); },
+  });
+
+  root.querySelector("[data-calendar-refresh]").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(root.dataset.calendarState, "offline");
+  assert.equal(root.querySelector("[data-calendar-link-status]").textContent, "LINK :: OFFLINE");
+  assert.equal(root.querySelector("[data-calendar-count]").textContent, "0");
+  assert.equal(root.querySelector("[data-calendar-offline]").hidden, false);
   instance.dispose();
   dom.window.close();
 });

@@ -1,4 +1,7 @@
-<% const calendar = page.data.calendar; %>
+<%
+  const calendar = page.data.calendar;
+  const calendarLinkState = calendar.state === "stale" ? "STALE DATA" : calendar.state.toUpperCase();
+%>
 <section class="route market-news" data-route-view data-route-key="<%= page.route.key %>" data-market-news data-calendar-state="<%= calendar.state %>">
   <%- include("../partials/route-head", { page }) %>
 
@@ -12,7 +15,7 @@
     </header>
 
     <div class="calendar-status" role="status" aria-live="polite" data-calendar-status>
-      <span data-calendar-link-status>LINK :: <%= calendar.state.toUpperCase() %></span>
+      <span data-calendar-link-status>LINK :: <%= calendarLinkState %></span>
       <span>VISIBLE :: <strong data-calendar-count><%= calendar.events.length %></strong></span>
       <span>UPDATED :: <time data-calendar-updated datetime="<%= calendar.updatedAt || "" %>"><%= calendar.updatedAt || "--" %></time></span>
     </div>

@@ -53,12 +53,10 @@ export function getCalendarWeekRange(date) {
 }
 
 export function createMarketNewsService({ provider, now = () => new Date(), cacheTtlMs = 60_000 }) {
-  let cache = null;
-  let inFlight = null;
-  let requestGeneration = 0;
-  const latestGenerationByKey = new Map();
+  const cacheByKey = new Map();
+  const inFlightByKey = new Map();
 
-  async function load(range, key, generation) {
+  async function load(range, key) {
     const rows = await provider.fetchWeek(range);
     const events = rows.map(normalizeEvent).filter(Boolean)
       .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
@@ -68,9 +66,7 @@ export function createMarketNewsService({ provider, now = () => new Date(), cach
       updatedAt: now().toISOString(),
       range,
     };
-    if (latestGenerationByKey.get(key) === generation) {
-      cache = { key, savedAt: now().valueOf(), result };
-    }
+    cacheByKey.set(key, { savedAt: now().valueOf(), result });
     return result;
   }
 
@@ -78,20 +74,21 @@ export function createMarketNewsService({ provider, now = () => new Date(), cach
     async getCurrentWeek({ force = false } = {}) {
       const range = getCalendarWeekRange(now());
       const key = `${range.from}:${range.to}`;
-      const fresh = cache?.key === key && now().valueOf() - cache.savedAt < cacheTtlMs;
+      const cache = cacheByKey.get(key);
+      const fresh = cache && now().valueOf() - cache.savedAt < cacheTtlMs;
       if (!force && fresh) return cache.result;
-      if (!force && inFlight?.key === key) return inFlight.promise;
 
-      const generation = ++requestGeneration;
-      latestGenerationByKey.set(key, generation);
-      const promise = load(range, key, generation).catch((error) => {
-        if (cache?.key === key) return { ...cache.result, state: "stale" };
+      const activeLoad = inFlightByKey.get(key);
+      if (activeLoad) return activeLoad;
+
+      const promise = load(range, key).catch((error) => {
+        const fallback = cacheByKey.get(key);
+        if (fallback) return { ...fallback.result, state: "stale" };
         throw error;
       }).finally(() => {
-        if (inFlight?.promise === promise) inFlight = null;
-        if (latestGenerationByKey.get(key) === generation) latestGenerationByKey.delete(key);
+        if (inFlightByKey.get(key) === promise) inFlightByKey.delete(key);
       });
-      inFlight = { key, promise };
+      inFlightByKey.set(key, promise);
       return promise;
     },
   };
