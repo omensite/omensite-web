@@ -18,6 +18,17 @@ function saveSession(req) {
   });
 }
 
+const LOGIN_FAILURES = Object.freeze({
+  ACCOUNT_BANNED: Object.freeze({ status: 403, message: "ACCESS FAILED :: ACCOUNT BANNED" }),
+  ACCESS_REVOKED: Object.freeze({ status: 403, message: "ACCESS FAILED :: REQUIRED ROLE NOT PRESENT" }),
+});
+
+function discordFailureLocation(error) {
+  if (error?.code === "ACCOUNT_BANNED") return "/login?error=account_banned";
+  if (error?.code === "ACCESS_REVOKED") return "/login?error=access_revoked";
+  return "/login?error=discord_auth_failed";
+}
+
 export function createAuthController({ authService, sessionRegistry }) {
   async function establishOperator(req, operator, { complete = false } = {}) {
     const previousOperator = req.session.operator;
@@ -25,6 +36,16 @@ export function createAuthController({ authService, sessionRegistry }) {
     await regenerateSession(req);
     if (previousOperator?.id) {
       sessionRegistry.unregister(previousOperator.id, previousSessionId);
+    }
+    try {
+      authService.assertOperatorAdmission?.(operator);
+    } catch (error) {
+      try {
+        await destroySession(req);
+      } catch {
+        // The admission failure is authoritative and safe to report.
+      }
+      throw error;
     }
     req.session.operator = operator;
     req.session.authComplete = complete;
@@ -42,6 +63,14 @@ export function createAuthController({ authService, sessionRegistry }) {
       } catch (error) {
         if (error.code === "CREDENTIALS_REQUIRED") {
           return res.status(400).json({ error: error.code });
+        }
+        const failure = LOGIN_FAILURES[error.code];
+        if (failure) {
+          return res.status(failure.status).json({
+            ok: false,
+            error: error.code,
+            message: failure.message,
+          });
         }
         return next(error);
       }
@@ -73,8 +102,8 @@ export function createAuthController({ authService, sessionRegistry }) {
         const operator = await authService.completeDiscord({ code });
         await establishOperator(req, operator, { complete: true });
         return res.redirect("/auth/complete");
-      } catch {
-        return res.redirect("/login?error=discord_auth_failed");
+      } catch (error) {
+        return res.redirect(discordFailureLocation(error));
       }
     },
 

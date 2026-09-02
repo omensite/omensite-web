@@ -8,7 +8,7 @@ import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-
 import { createInMemoryUserRepository } from "../../src/repositories/in-memory-user-repository.js";
 import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
-function createAdminRouteHarness(demoRoles = ["Admin"]) {
+function createAdminRouteHarness(demoRoles = ["Admin"], appOptions = {}) {
   const now = () => "2026-09-02T12:00:00.000Z";
   const userRepository = createInMemoryUserRepository({ now });
   const banRepository = createInMemoryBanRepository({ now });
@@ -17,7 +17,7 @@ function createAdminRouteHarness(demoRoles = ["Admin"]) {
   userRepository.upsert({
     id: "42", username: "member", displayName: "Member", authMode: "discord",
     roles: ["OS", "Indicators"], capabilities: ["base", "indicators"],
-    rolesSyncedAt: "2026-09-02T11:55:00.000Z",
+    rolesSyncedAt: "2026-09-02T11:55:00.000Z", lastSignedInAt: "2026-09-02T10:30:00.000Z",
   });
   indicatorRequestRepository.upsertPending({
     userId: "42", discordUsername: "member", tradingViewUsername: "member_tv",
@@ -26,6 +26,7 @@ function createAdminRouteHarness(demoRoles = ["Admin"]) {
   return {
     app: createTestApp({
       demoRoles, userRepository, banRepository, sessionRegistry, indicatorRequestRepository,
+      ...appOptions,
     }),
     userRepository, banRepository, sessionRegistry, indicatorRequestRepository,
   };
@@ -50,6 +51,33 @@ test("Admin page renders memory warning, safe users, requests, and mutation toke
   assert.equal(dom.window.document.querySelectorAll("[data-admin-request-row]").length, 1);
   assert.doesNotMatch(response.text, /must-not-render/);
   assert.ok(dom.window.document.querySelector('button[data-admin-action="ban"][disabled]'));
+  const member = dom.window.document.querySelector('[data-admin-user-row][data-user-id="42"]');
+  assert.equal(member.querySelector("[data-admin-last-sign-in] time").dateTime, "2026-09-02T10:30:00.000Z");
+  assert.equal(member.querySelector("[data-admin-role-sync] time").dateTime, "2026-09-02T11:55:00.000Z");
+  dom.window.close();
+});
+
+test("Admin request audit renders safe active TradingView links and decision metadata", async () => {
+  const indicatorCatalog = Object.freeze([
+    Object.freeze({ id: "demo-market-structure", name: "SAFE SCRIPT", active: true, tradingViewUrl: "https://www.tradingview.com/script/safe/" }),
+    Object.freeze({ id: "unsafe", name: "UNSAFE SCRIPT", active: true, tradingViewUrl: "javascript:alert(1)" }),
+  ]);
+  const harness = createAdminRouteHarness(["Admin"], { indicatorCatalog });
+  harness.indicatorRequestRepository.upsertPending({
+    userId: "42", discordUsername: "member", tradingViewUsername: "member_tv",
+    indicatorIds: ["demo-market-structure", "unsafe"],
+  });
+  harness.indicatorRequestRepository.decide({ userId: "42", status: "GRANTED", actorId: "reviewer-7" });
+  const agent = await loginDemo(harness.app, { username: "admin" });
+
+  const response = await agent.get("/admin").expect(200);
+  const dom = new JSDOM(response.text);
+  const row = dom.window.document.querySelector('[data-admin-request-row][data-user-id="42"]');
+
+  assert.equal(row.querySelectorAll('a[href="https://www.tradingview.com/script/safe/"]').length, 1);
+  assert.equal(row.querySelectorAll('a[href^="javascript:"]').length, 0);
+  assert.equal(row.querySelector("[data-admin-decided-by]").textContent.trim(), "DECIDED BY :: reviewer-7");
+  assert.equal(row.querySelector("[data-admin-decided-at] time").dateTime, "2026-09-02T12:00:00.000Z");
   dom.window.close();
 });
 

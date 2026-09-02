@@ -3,6 +3,7 @@ import test from "node:test";
 import session from "express-session";
 import request from "supertest";
 import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
+import { createInMemoryBanRepository } from "../../src/repositories/in-memory-ban-repository.js";
 import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
 const discordOperator = {
@@ -59,6 +60,64 @@ test("same-browser re-login replaces the prior identity session registry mapping
   assert.deepEqual(sessionRegistry.listSessionIds("demo:first"), []);
   assert.equal(sessionRegistry.activeCount("demo:second"), 1);
   assert.equal(sessionRegistry.listSessionIds("demo:second").length, 1);
+});
+
+test("a ban committed during session regeneration prevents final demo admission", async () => {
+  const banRepository = createInMemoryBanRepository();
+  const sessionRegistry = createInMemorySessionRegistry();
+  const sessionStore = new session.MemoryStore();
+  const destroy = sessionStore.destroy.bind(sessionStore);
+  let destroyCalls = 0;
+  let signalRegeneration;
+  let releaseRegeneration;
+  const regenerationReached = new Promise((resolve) => { signalRegeneration = resolve; });
+  const regenerationReleased = new Promise((resolve) => { releaseRegeneration = resolve; });
+  sessionStore.destroy = (sessionId, callback) => {
+    destroyCalls += 1;
+    if (destroyCalls !== 1) return destroy(sessionId, callback);
+    signalRegeneration();
+    return regenerationReleased.then(() => destroy(sessionId, callback));
+  };
+  const app = createTestApp({ banRepository, sessionRegistry, sessionStore });
+  const agent = request.agent(app);
+
+  const loginPromise = agent.post("/auth/login")
+    .send({ username: "racing-user", passkey: "preview" })
+    .then((response) => response);
+  await regenerationReached;
+  banRepository.ban({ userId: "demo:racing-user", actorId: "admin", reason: "Concurrent ban" });
+  releaseRegeneration();
+  const response = await loginPromise;
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(response.body, {
+    ok: false,
+    error: "ACCOUNT_BANNED",
+    message: "ACCESS FAILED :: ACCOUNT BANNED",
+  });
+  assert.equal(sessionRegistry.activeCount("demo:racing-user"), 0);
+  await agent.get("/home").expect(302).expect("Location", "/login");
+});
+
+test("Discord completion performs final admission and returns a stable banned redirect", async () => {
+  let admissionChecks = 0;
+  const sessionRegistry = createInMemorySessionRegistry();
+  const authService = {
+    beginDiscord: () => ({ state: "correct", authorizationUrl: "/discord" }),
+    completeDiscord: async () => discordOperator,
+    assertOperatorAdmission() {
+      admissionChecks += 1;
+      throw Object.assign(new Error("private ban detail"), { code: "ACCOUNT_BANNED" });
+    },
+  };
+  const agent = request.agent(createTestApp({ authMode: "discord", authService, sessionRegistry }));
+  await agent.get("/auth/discord");
+
+  await agent.get("/auth/discord/callback?code=code&state=correct")
+    .expect(302).expect("Location", "/login?error=account_banned");
+  assert.equal(admissionChecks, 1);
+  assert.equal(sessionRegistry.activeCount("42"), 0);
+  await agent.get("/home").expect(302).expect("Location", "/login");
 });
 
 test("fragment requests receive 401 instead of a redirect", async () => {

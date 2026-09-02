@@ -29,7 +29,8 @@
           <div class="admin-access-list" data-field="ACCESS">
             <span>ROLES :: <strong><%= user.roles.length ? user.roles.join(" / ") : "NONE" %></strong></span>
             <span>CAPS :: <strong><%= user.capabilities.length ? user.capabilities.join(" / ") : "NONE" %></strong></span>
-            <% if (user.rolesSyncedAt) { %><span>SYNC :: <time datetime="<%= user.rolesSyncedAt %>"><%= user.rolesSyncedAt %></time></span><% } %>
+            <% if (user.lastSignedInAt) { %><span data-admin-last-sign-in>SIGNED IN :: <time datetime="<%= user.lastSignedInAt %>"><%= user.lastSignedInAt %></time></span><% } %>
+            <% if (user.rolesSyncedAt) { %><span data-admin-role-sync>ROLE SYNC :: <time datetime="<%= user.rolesSyncedAt %>"><%= user.rolesSyncedAt %></time></span><% } %>
             <% if (user.lastSeenAt) { %><span>SEEN :: <time datetime="<%= user.lastSeenAt %>"><%= user.lastSeenAt %></time></span><% } %>
           </div>
           <div class="admin-session-state" data-field="SESSION STATE">
@@ -83,8 +84,18 @@
           <div data-field="MEMBER"><strong>@<%= request.discordUsername %></strong><span><%= request.userId %></span></div>
           <div data-field="REQUEST">
             <span>TV :: <strong><%= request.tradingViewUsername %></strong></span>
-            <span><%= request.indicatorNames.join(" / ") %></span>
+            <span>
+              <% for (const indicator of request.indicators) { %>
+                <% if (indicator.tradingViewUrl) { %>
+                  <a href="<%= indicator.tradingViewUrl %>" target="_blank" rel="noopener noreferrer"><%= indicator.name %></a>
+                <% } else { %>
+                  <span><%= indicator.name %></span>
+                <% } %>
+              <% } %>
+            </span>
             <time datetime="<%= request.requestedAt %>"><%= request.requestedAt %></time>
+            <% if (request.decidedBy) { %><span data-admin-decided-by>DECIDED BY :: <%= request.decidedBy %></span><% } %>
+            <% if (request.decidedAt) { %><span data-admin-decided-at>DECIDED AT :: <time datetime="<%= request.decidedAt %>"><%= request.decidedAt %></time></span><% } %>
           </div>
           <output class="admin-request-state indicator-state-<%= request.status.toLowerCase() %>" data-field="STATE" data-admin-request-status><%= request.status %></output>
           <div class="admin-actions" data-field="DECISION">

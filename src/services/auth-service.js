@@ -29,7 +29,7 @@ export function createAuthService({
   banRepository = { isBanned: () => false },
   now = () => new Date(),
 } = {}) {
-  function buildOperator({ identity, authMode, roles, capabilities, discordAuth }) {
+  function buildOperator({ identity, authMode, roles, capabilities, discordAuth, rolesSyncedAt, lastSignedInAt }) {
     return {
       id: identity.id,
       username: identity.username,
@@ -38,7 +38,8 @@ export function createAuthService({
       authMode,
       roles,
       capabilities,
-      rolesSyncedAt: toIsoTimestamp(now()),
+      rolesSyncedAt: rolesSyncedAt ?? toIsoTimestamp(now()),
+      ...(lastSignedInAt ? { lastSignedInAt } : {}),
       discordAuth,
     };
   }
@@ -60,6 +61,12 @@ export function createAuthService({
     }
   }
 
+  function assertOperatorAdmission(operator) {
+    rejectIfBanned(operator.id);
+    rejectIfNoBaseAccess(operator);
+    return operator;
+  }
+
   async function authenticateDemo({ username = "", passkey = "" } = {}) {
     const normalizedUsername = username.trim();
     if (!normalizedUsername || !passkey.trim()) {
@@ -69,6 +76,7 @@ export function createAuthService({
     rejectIfBanned(`demo:${normalizedUsername.toLowerCase()}`);
     const access = rolePolicy.fromRoleNames(demoRoles);
     rejectIfNoBaseAccess(access);
+    const signedInAt = toIsoTimestamp(now());
     const operator = buildOperator({
       identity: {
         id: `demo:${normalizedUsername.toLowerCase()}`,
@@ -79,6 +87,8 @@ export function createAuthService({
       authMode: "demo",
       roles: access.roles,
       capabilities: access.capabilities,
+      rolesSyncedAt: signedInAt,
+      lastSignedInAt: signedInAt,
       discordAuth: null,
     });
     persistSafeSnapshot(operator);
@@ -100,11 +110,14 @@ export function createAuthService({
 
     const access = rolePolicy.fromDiscordRoleIds(member.roles);
     rejectIfNoBaseAccess(access);
+    const signedInAt = toIsoTimestamp(now());
     const operator = buildOperator({
       identity,
       authMode: "discord",
       roles: access.roles,
       capabilities: access.capabilities,
+      rolesSyncedAt: signedInAt,
+      lastSignedInAt: signedInAt,
       discordAuth,
     });
     persistSafeSnapshot(operator);
@@ -131,6 +144,7 @@ export function createAuthService({
       authMode: "discord",
       roles: access.roles,
       capabilities: access.capabilities,
+      lastSignedInAt: operator.lastSignedInAt,
       discordAuth,
     });
     persistSafeSnapshot(refreshed);
@@ -146,6 +160,7 @@ export function createAuthService({
   return {
     authenticateDemo,
     authenticate: authenticateDemo,
+    assertOperatorAdmission,
     beginDiscord,
     completeDiscord,
     refreshOperator,

@@ -1,3 +1,5 @@
+import { normalizeTradingViewUrl } from "../config/indicator-catalog.js";
+
 function adminError(code, message) {
   return Object.assign(new Error(message), { code });
 }
@@ -13,6 +15,7 @@ function safeUserSnapshot(user, { banRepository, sessionRegistry }) {
     roles: [...(user.roles ?? [])],
     capabilities: [...(user.capabilities ?? [])],
     rolesSyncedAt: user.rolesSyncedAt ?? null,
+    lastSignedInAt: user.lastSignedInAt ?? null,
     firstSeenAt: user.firstSeenAt ?? null,
     lastSeenAt: user.lastSeenAt ?? null,
     banned: Boolean(ban),
@@ -33,7 +36,11 @@ export function createAdminService({
   sessionStore,
   catalog = [],
 } = {}) {
-  const indicatorNames = new Map(catalog.map((indicator) => [indicator.id, indicator.name]));
+  const indicatorsById = new Map(catalog.map((indicator) => [indicator.id, {
+    id: indicator.id,
+    name: indicator.name,
+    tradingViewUrl: indicator.active ? normalizeTradingViewUrl(indicator.tradingViewUrl) : null,
+  }]));
 
   async function invalidateSessions(userId) {
     const normalizedUserId = String(userId);
@@ -62,7 +69,11 @@ export function createAdminService({
         users: userRepository.list().map((user) => safeUserSnapshot(user, { banRepository, sessionRegistry })),
         requests: requestRepository.list().map((request) => ({
           ...request,
-          indicatorNames: request.indicatorIds.map((id) => indicatorNames.get(id) ?? id),
+          indicators: request.indicatorIds.map((id) => indicatorsById.get(id) ?? {
+            id,
+            name: id,
+            tradingViewUrl: null,
+          }),
         })),
       };
     },

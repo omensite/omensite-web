@@ -7,13 +7,13 @@ import { createInMemoryIndicatorRequestRepository } from "../../src/repositories
 import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
 import { createInMemoryUserRepository } from "../../src/repositories/in-memory-user-repository.js";
 
-function createAdminServiceHarness({ sessionStore } = {}) {
+function createAdminServiceHarness({ sessionStore, catalog: suppliedCatalog } = {}) {
   const now = () => "2026-09-02T12:00:00.000Z";
   const userRepository = createInMemoryUserRepository({ now });
   const banRepository = createInMemoryBanRepository({ now });
   const sessionRegistry = createInMemorySessionRegistry();
   const requestRepository = createInMemoryIndicatorRequestRepository({ now });
-  const catalog = createIndicatorCatalog({ authMode: "demo" });
+  const catalog = suppliedCatalog ?? createIndicatorCatalog({ authMode: "demo" });
   const destroyed = [];
   const resolvedStore = sessionStore ?? {
     destroy(sessionId, callback) {
@@ -112,7 +112,8 @@ test("dashboard exposes only safe user fields with ban and session state and new
   userRepository.upsert({
     id: "42", username: "member", displayName: "Member", avatarUrl: null,
     authMode: "discord", roles: ["OS", "Indicators"], capabilities: ["base", "indicators"],
-    rolesSyncedAt: "2026-09-02T11:55:00.000Z", discordAuth: { accessToken: "must-not-leak" },
+    rolesSyncedAt: "2026-09-02T11:55:00.000Z", lastSignedInAt: "2026-09-02T10:15:00.000Z",
+    discordAuth: { accessToken: "must-not-leak" },
   });
   banRepository.ban({ userId: "42", actorId: "7", reason: "Policy violation" });
   sessionRegistry.register("42", "sid-a");
@@ -127,9 +128,40 @@ test("dashboard exposes only safe user fields with ban and session state and new
   assert.equal(dashboard.users[0].banned, true);
   assert.equal(dashboard.users[0].activeSessions, 1);
   assert.deepEqual(dashboard.users[0].roles, ["OS", "Indicators"]);
+  assert.equal(dashboard.users[0].lastSignedInAt, "2026-09-02T10:15:00.000Z");
   assert.equal("discordAuth" in dashboard.users[0], false);
   assert.doesNotMatch(JSON.stringify(dashboard), /must-not-leak/);
-  assert.equal(dashboard.requests[0].indicatorNames[0], "DEMO :: MARKET STRUCTURE");
+  assert.deepEqual(dashboard.requests[0].indicators[0], {
+    id: "demo-market-structure",
+    name: "DEMO :: MARKET STRUCTURE",
+    tradingViewUrl: null,
+  });
+});
+
+test("dashboard request audit includes only sanitized publication descriptors", () => {
+  const catalog = Object.freeze([
+    Object.freeze({ id: "safe", name: "SAFE SCRIPT", active: true, tradingViewUrl: "https://www.tradingview.com/script/safe/" }),
+    Object.freeze({ id: "unsafe", name: "UNSAFE SCRIPT", active: true, tradingViewUrl: "javascript:alert(1)" }),
+    Object.freeze({ id: "retired", name: "RETIRED SCRIPT", active: false, tradingViewUrl: "https://www.tradingview.com/script/retired/" }),
+  ]);
+  const { service, requestRepository } = createAdminServiceHarness({ catalog });
+  requestRepository.upsertPending({
+    userId: "42", discordUsername: "member", tradingViewUsername: "member_tv",
+    indicatorIds: ["safe", "unsafe", "retired", "missing"],
+  });
+  requestRepository.decide({ userId: "42", status: "GRANTED", actorId: "7" });
+
+  const [request] = service.getDashboard().requests;
+
+  assert.deepEqual(request.indicators, [
+    { id: "safe", name: "SAFE SCRIPT", tradingViewUrl: "https://www.tradingview.com/script/safe/" },
+    { id: "unsafe", name: "UNSAFE SCRIPT", tradingViewUrl: null },
+    { id: "retired", name: "RETIRED SCRIPT", tradingViewUrl: null },
+    { id: "missing", name: "missing", tradingViewUrl: null },
+  ]);
+  assert.equal(request.status, "GRANTED");
+  assert.equal(request.decidedBy, "7");
+  assert.equal(request.decidedAt, "2026-09-02T12:00:00.000Z");
 });
 
 test("indicator decisions are delegated to repository validation", () => {

@@ -43,6 +43,7 @@ test("legacy authenticate retains demo login with a normalized demo ID", async (
     roles: ["OS"],
     capabilities: ["base"],
     rolesSyncedAt: "2026-09-02T12:00:00.000Z",
+    lastSignedInAt: "2026-09-02T12:00:00.000Z",
     discordAuth: null,
   });
 });
@@ -120,6 +121,7 @@ test("Discord completion creates a role-backed operator and confines tokens to i
     roles: ["OS", "Indicators"],
     capabilities: ["base", "indicators"],
     rolesSyncedAt: "2026-09-02T12:00:00.000Z",
+    lastSignedInAt: "2026-09-02T12:00:00.000Z",
     discordAuth: {
       accessToken: "access",
       refreshToken: "refresh",
@@ -183,11 +185,19 @@ test("Discord completion rejects banned users before creating an operator", asyn
 });
 
 test("refresh replaces roles and capabilities from Discord membership", async () => {
+  let repositoryNow = "2026-09-02T11:00:00.000Z";
+  const userRepository = createInMemoryUserRepository({ now: () => repositoryNow });
+  userRepository.upsert({
+    id: "42", username: "omen", displayName: "Omen", avatarUrl: null, authMode: "discord",
+    roles: ["OS"], capabilities: ["base"], rolesSyncedAt: "2026-09-02T11:00:00.000Z",
+    lastSignedInAt: "2026-09-01T15:30:00.000Z",
+  });
+  repositoryNow = "2026-09-02T12:00:00.000Z";
   const service = createAuthService({
     mode: "discord",
     discordProvider: { getCurrentGuildMember: async () => ({ roles: ["role-os", "role-journal"] }) },
     rolePolicy,
-    userRepository: createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" }),
+    userRepository,
     banRepository: { isBanned: () => false },
     now,
   });
@@ -201,11 +211,36 @@ test("refresh replaces roles and capabilities from Discord membership", async ()
     roles: ["Indicators"],
     capabilities: ["indicators"],
     rolesSyncedAt: "2026-09-02T11:00:00.000Z",
+    lastSignedInAt: "2026-09-01T15:30:00.000Z",
     discordAuth: { accessToken: "a", refreshToken: "r", expiresAt: "2026-09-03T12:00:00.000Z" },
   });
 
   assert.deepEqual(refreshed.roles, ["OS", "Journal"]);
   assert.deepEqual(refreshed.capabilities, ["base", "journal"]);
+  assert.equal(refreshed.rolesSyncedAt, "2026-09-02T12:00:00.000Z");
+  assert.equal(refreshed.lastSignedInAt, "2026-09-01T15:30:00.000Z");
+  const persisted = userRepository.findById("42");
+  assert.equal(persisted.rolesSyncedAt, "2026-09-02T12:00:00.000Z");
+  assert.equal(persisted.lastSeenAt, "2026-09-02T12:00:00.000Z");
+  assert.equal(persisted.lastSignedInAt, "2026-09-01T15:30:00.000Z");
+});
+
+test("final admission synchronously rechecks bans and base access", async () => {
+  let banned = false;
+  const service = createAuthService({
+    mode: "demo", demoRoles: ["OS"], rolePolicy,
+    banRepository: { isBanned: () => banned }, now,
+  });
+  const operator = await service.authenticateDemo({ username: "late-ban", passkey: "preview" });
+
+  assert.equal(service.assertOperatorAdmission(operator), operator);
+  banned = true;
+  assert.throws(() => service.assertOperatorAdmission(operator), { code: "ACCOUNT_BANNED" });
+  banned = false;
+  assert.throws(
+    () => service.assertOperatorAdmission({ ...operator, capabilities: ["indicators"] }),
+    { code: "ACCESS_REVOKED" },
+  );
 });
 
 test("refresh exchanges an expired token before replacing Discord membership", async () => {

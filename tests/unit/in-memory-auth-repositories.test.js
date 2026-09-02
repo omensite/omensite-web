@@ -4,14 +4,25 @@ import { createInMemoryUserRepository } from "../../src/repositories/in-memory-u
 import { createInMemoryBanRepository } from "../../src/repositories/in-memory-ban-repository.js";
 import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
 
-test("user upsert preserves first sign-in and updates the role snapshot", () => {
-  const users = createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" });
-  users.upsert({ id: "42", username: "first", roles: ["OS"], capabilities: ["base"] });
-  users.upsert({ id: "42", username: "renamed", roles: ["OS", "Indicators"], capabilities: ["base", "indicators"] });
+test("user upsert preserves first and last sign-in while updating the role snapshot", () => {
+  let repositoryNow = "2026-09-02T11:00:00.000Z";
+  const users = createInMemoryUserRepository({ now: () => repositoryNow });
+  users.upsert({
+    id: "42", username: "first", roles: ["OS"], capabilities: ["base"],
+    rolesSyncedAt: "2026-09-02T10:00:00.000Z", lastSignedInAt: "2026-09-02T09:00:00.000Z",
+  });
+  repositoryNow = "2026-09-02T12:00:00.000Z";
+  users.upsert({
+    id: "42", username: "renamed", roles: ["OS", "Indicators"], capabilities: ["base", "indicators"],
+    rolesSyncedAt: "2026-09-02T12:00:00.000Z",
+  });
   const record = users.findById("42");
   assert.equal(record.username, "renamed");
-  assert.equal(record.firstSeenAt, "2026-09-02T12:00:00.000Z");
+  assert.equal(record.firstSeenAt, "2026-09-02T11:00:00.000Z");
   assert.deepEqual(record.roles, ["OS", "Indicators"]);
+  assert.equal(record.rolesSyncedAt, "2026-09-02T12:00:00.000Z");
+  assert.equal(record.lastSignedInAt, "2026-09-02T09:00:00.000Z");
+  assert.equal(record.lastSeenAt, "2026-09-02T12:00:00.000Z");
 });
 test("user records and inputs are defensively copied and list is newest first", () => {
   let timestamp = "2026-09-02T12:00:00.000Z";
