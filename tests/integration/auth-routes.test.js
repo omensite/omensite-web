@@ -142,6 +142,7 @@ test("successful Discord callback regenerates and registers the session then ren
       stateConsumedBeforeProvider = sessionWrites > writesAfterBegin;
       return discordOperator;
     },
+    refreshOperator: async (operator) => operator,
   };
   const sessionRegistry = { register: (...values) => registered.push(values), unregister() {} };
   const agent = request.agent(createTestApp({ authMode: "discord", authService, sessionRegistry, sessionStore }));
@@ -167,6 +168,7 @@ test("logout attempts Discord revocation but always destroys and unregisters the
   let revocations = 0;
   const authService = {
     beginDiscord: () => ({ state: "correct", authorizationUrl: "/discord" }), completeDiscord: async () => discordOperator,
+    refreshOperator: async (operator) => operator,
     revokeOperatorToken: async () => { revocations += 1; throw new Error("Discord offline"); },
   };
   const sessionRegistry = { register: (...values) => registered.push(values), unregister: (...values) => unregistered.push(values) };

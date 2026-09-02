@@ -8,6 +8,6 @@
       <% }) %>
     </div>
   </div>
-  <div class="statusbar-session">SESSION 01 / AUTHORIZED</div>
+  <div class="statusbar-session" title="<%= page.operator?.roles?.join(", ") ?? "" %>">SESSION 01 / AUTHORIZED</div>
   <time class="statusbar-clock" data-clock></time>
 </div>

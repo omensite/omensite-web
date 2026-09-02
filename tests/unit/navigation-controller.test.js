@@ -155,6 +155,28 @@ test("a 401 redirects to login without replacing the current route", async () =>
   assert.match(dom.window.document.querySelector("[data-main]").textContent, /HOME/);
 });
 
+test("a denied navigation holds the overlay, reports permission failure, and retains route history", async () => {
+  const { dom, controller, transitionCalls, toasts } = createHarness({
+    fetchImpl: async () => Response.json({
+      error: "INSUFFICIENT_PERMISSIONS",
+      message: "ACCESS FAILED :: INSUFFICIENT PERMISSIONS",
+    }, { status: 403 }),
+  });
+  dom.window.matchMedia = () => ({ matches: true });
+  const originalPath = dom.window.location.pathname;
+  const originalTitle = dom.window.document.title;
+  const startedAt = Date.now();
+
+  await controller.navigate("/admin");
+
+  assert.ok(Date.now() - startedAt >= 110, "reduced-motion denial must retain its loading state for about 120ms");
+  assert.equal(dom.window.location.pathname, originalPath);
+  assert.equal(dom.window.document.title, originalTitle);
+  assert.match(dom.window.document.querySelector("[data-main]").textContent, /HOME/);
+  assert.deepEqual(transitionCalls.at(-1), ["fail", "ACCESS FAILED :: INSUFFICIENT PERMISSIONS"]);
+  assert.deepEqual(toasts, ["ACCESS FAILED :: INSUFFICIENT PERMISSIONS"]);
+});
+
 test("a 404 fragment retains current content and reports terminal route-not-found feedback", async () => {
   const { dom, controller, transitionCalls, toasts } = createHarness({
     fetchImpl: async () => new Response("missing", { status: 404 }),

@@ -9,14 +9,14 @@
 
   <nav aria-label="Terminal navigation">
     <% page.navigation.forEach((item, index) => { %>
-      <a class="navitem<%= item.key === page.route.key || (item.key === "journal" && ["journal-new", "journal-public"].includes(page.route.key)) ? " active" : "" %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>"<% if (item.key === page.route.key) { %> aria-current="page"<% } %>><%= index === page.navigation.length - 1 ? "`-- " : "|-- " %><%= item.uri === "alerts/support-resistance" ? "alerts/s-r" : item.uri %></a>
+      <a class="navitem<%= item.key === page.route.key || (item.key === "journal" && ["journal-new", "journal-public"].includes(page.route.key)) ? " active" : "" %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>" data-required-capability="<%= item.capability %>"<% if (item.key === page.route.key) { %> aria-current="page"<% } %>><%= index === page.navigation.length - 1 ? "`-- " : "|-- " %><%= item.uri === "alerts/support-resistance" ? "alerts/s-r" : item.uri %></a>
     <% }) %>
   </nav>
 
   <div class="sidebar-foot">
     <div>UPTIME <span data-uptime>0m 0s</span></div>
     <div>ALERTS ARMED 0</div>
-    <div>SYNC: <span class="standby">STANDBY</span></div>
+    <div>SYNC: <span class="standby"><%= page.operator?.authMode === "discord" ? "DISCORD" : "DEMO" %></span></div>
     <button class="btn btn-danger sidebar-logout" type="button" data-logout>[ LOGOUT ]</button>
   </div>
 </aside>

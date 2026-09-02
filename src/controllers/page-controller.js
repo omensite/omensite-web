@@ -17,10 +17,17 @@ export function renderPage(req, res, page) {
 export function createPageController() {
   return {
     show(route, extras = {}) {
-      return (req, res) => renderPage(req, res, buildPageViewModel(route, {
-        operator: req.session.operator,
-        ...extras,
-      }));
+      return (req, res) => {
+        const accessNotice = route.key === "home" && !req.isOmensiteFragment
+          ? req.session.accessNotice
+          : null;
+        if (accessNotice) delete req.session.accessNotice;
+        return renderPage(req, res, buildPageViewModel(route, {
+          operator: req.session.operator,
+          accessNotice,
+          ...extras,
+        }));
+      };
     },
   };
 }

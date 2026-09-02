@@ -1,5 +1,8 @@
 <section class="route" data-route-view data-route-key="<%= page.route.key %>">
   <%- include("../partials/route-head", { page }) %>
+  <% if (page.accessNotice) { %>
+    <output class="toast" data-access-notice><%= page.accessNotice %></output>
+  <% } %>
   <div class="grid grid-4" style="margin-bottom:26px">
     <div class="stat"><div class="stat-label">ALERTS ARMED</div><div class="stat-value muted">0</div></div>
     <div class="stat"><div class="stat-label">JOURNAL ENTRIES</div><div class="stat-value muted" data-journal-count>0</div></div>

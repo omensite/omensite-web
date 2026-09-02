@@ -10,6 +10,7 @@ import { createAuthService } from "./services/auth-service.js";
 import { createRolePolicy } from "./services/role-policy.js";
 import { ensureCsrfToken } from "./security/csrf.js";
 import { requireAuth } from "./middleware/require-auth.js";
+import { createRefreshRoles } from "./middleware/refresh-roles.js";
 import { fragmentRequest } from "./middleware/fragment-request.js";
 import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
@@ -65,6 +66,11 @@ export function createApp({
     userRepository,
     banRepository,
   });
+  const refreshRoles = createRefreshRoles({
+    authService: resolvedAuthService,
+    refreshAfterMs: resolvedAuthConfig.roleRefreshMs,
+    sessionRegistry,
+  });
 
   const app = express();
   app.locals.authConfig = resolvedAuthConfig;
@@ -102,8 +108,9 @@ export function createApp({
     : res.render("layouts/login", { authMode: resolvedAuthConfig.mode, complete: false }));
   app.use("/auth", createAuthRoutes({ authConfig: resolvedAuthConfig, authService: resolvedAuthService, sessionRegistry }));
   configureRoutes?.(app);
-  app.use(requireAuth, createPageRoutes({ marketNewsService, logger }));
-  app.use(requireAuth, createJournalRoutes());
+  app.use(requireAuth, refreshRoles);
+  app.use(createPageRoutes({ marketNewsService, logger }));
+  app.use(createJournalRoutes());
 
   app.use((req, res) => res.status(404).render("pages/error", {
     fragment: req.isOmensiteFragment, status: 404, heading: "ROUTE NOT FOUND",

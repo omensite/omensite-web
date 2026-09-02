@@ -1,6 +1,7 @@
 const FAILURE_MESSAGE = "ROUTE LOAD FAILED :: CURRENT BUFFER RETAINED";
 const ROUTE_NOT_FOUND_MESSAGE = "ROUTE NOT FOUND :: CURRENT BUFFER RETAINED";
 const SYSTEM_ERROR_MESSAGE = "SYSTEM ERROR :: RETRY ROUTE";
+const ACCESS_DENIED_MESSAGE = "ACCESS FAILED :: INSUFFICIENT PERMISSIONS";
 
 function reducedMotion(windowRef) {
   return Boolean(windowRef.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
@@ -56,6 +57,18 @@ export function createNavigationController({ documentRef, windowRef, fetchImpl, 
       if (response.status === 401) {
         transition.hide();
         windowRef.location.assign("/login");
+        return;
+      }
+      if (response.status === 403) {
+        const denialAfter = useReducedMotion ? 120 : 900;
+        const remaining = Math.max(0, denialAfter - (Date.now() - startedAt));
+        if (remaining) await wait(windowRef, remaining);
+        if (currentRequest !== requestId || disposed) return;
+        transition.fail(ACCESS_DENIED_MESSAGE);
+        showToast(ACCESS_DENIED_MESSAGE);
+        windowRef.setTimeout(() => {
+          if (currentRequest === requestId && !disposed) transition.hide();
+        }, hideAfter);
         return;
       }
       if (response.status === 404) toastMessage = ROUTE_NOT_FOUND_MESSAGE;
