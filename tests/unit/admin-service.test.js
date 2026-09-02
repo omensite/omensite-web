@@ -23,7 +23,14 @@ function createAdminServiceHarness({ sessionStore, catalog: suppliedCatalog } = 
   };
   const service = createAdminService({
     userRepository, banRepository, sessionRegistry, requestRepository,
-    sessionStore: resolvedStore, catalog, now,
+    sessionStore: resolvedStore,
+    catalog,
+    now,
+    assertOperatorAdmission(operator) {
+      if (banRepository.isBanned(operator.id)) {
+        throw Object.assign(new Error("banned"), { code: "ACCOUNT_BANNED" });
+      }
+    },
   });
   return {
     service, userRepository, banRepository, sessionRegistry, requestRepository,
@@ -78,6 +85,33 @@ test("an administrator cannot ban their own identity", async () => {
     () => service.banUser({ userId: "7", actorId: "7", reason: "self" }),
     { code: "SELF_BAN_FORBIDDEN" },
   );
+});
+
+test("a banned actor cannot cross a service boundary to unban itself or mutate state", async () => {
+  const { service, banRepository, requestRepository, sessionRegistry, destroyed } = createAdminServiceHarness();
+  const actor = { id: "7", authMode: "demo", roles: ["Admin"], capabilities: ["admin"] };
+  banRepository.ban({ userId: "7", actorId: "root", reason: "Concurrent ban" });
+  banRepository.ban({ userId: "42", actorId: "root", reason: "Target ban" });
+  requestRepository.upsertPending({
+    userId: "42", discordUsername: "member", tradingViewUsername: "member_tv",
+    indicatorIds: ["demo-market-structure"],
+  });
+  sessionRegistry.register("42", "sid-42");
+
+  for (const mutate of [
+    () => service.unbanUser({ userId: "7", actor }),
+    () => service.signOutUser({ userId: "42", actor }),
+    () => service.banUser({ userId: "42", actor, reason: "changed" }),
+    () => service.decideIndicatorRequest({ userId: "42", actor, status: "GRANTED" }),
+  ]) {
+    await assert.rejects(Promise.resolve().then(mutate), { code: "ACCOUNT_BANNED" });
+  }
+
+  assert.equal(banRepository.isBanned("7"), true);
+  assert.equal(banRepository.findByUserId("42").reason, "Target ban");
+  assert.equal(requestRepository.findByUserId("42").status, "PENDING");
+  assert.deepEqual(sessionRegistry.listSessionIds("42"), ["sid-42"]);
+  assert.deepEqual(destroyed, []);
 });
 
 test("session invalidation attempts every session and unregisters only successful destroys", async () => {
@@ -172,6 +206,11 @@ test("indicator decisions are delegated to repository validation", () => {
   });
 
   assert.equal(service.decideIndicatorRequest({ userId: "42", actorId: "7", status: "GRANTED" }).status, "GRANTED");
+  assert.throws(
+    () => service.decideIndicatorRequest({ userId: "42", actorId: "8", status: "DENIED" }),
+    { code: "INDICATOR_REQUEST_NOT_PENDING" },
+  );
+  assert.equal(requestRepository.findByUserId("42").status, "GRANTED");
   assert.throws(
     () => service.decideIndicatorRequest({ userId: "42", actorId: "7", status: "PENDING" }),
     { code: "INVALID_DECISION" },

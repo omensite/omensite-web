@@ -40,13 +40,17 @@ function adminFixture() {
       <ol data-admin-requests>
         <li data-admin-request-row data-user-id="42" data-request-status="PENDING">
           <output data-admin-request-status>PENDING</output>
-          <form>
-            <input name="_csrf" value="csrf-session-token">
-            <input name="status" value="GRANTED">
-            <button type="submit" data-admin-action="decision" data-admin-decision="GRANTED"
-              data-admin-action-endpoint="/api/admin/indicator-requests/42/decision"
-              data-admin-confirm="GRANT REQUEST?">[ GRANTED ]</button>
-          </form>
+          <span data-admin-decided-by hidden>DECIDED BY :: <span data-admin-decided-by-value></span></span>
+          <span data-admin-decided-at hidden>DECIDED AT :: <time></time></span>
+          <div data-admin-decision-controls>
+            <form>
+              <input name="_csrf" value="csrf-session-token">
+              <input name="status" value="GRANTED">
+              <button type="submit" data-admin-action="decision" data-admin-decision="GRANTED"
+                data-admin-action-endpoint="/api/admin/indicator-requests/42/decision"
+                data-admin-confirm="GRANT REQUEST?">[ GRANTED ]</button>
+            </form>
+          </div>
         </li>
       </ol>
       <output data-admin-feedback></output>
@@ -141,7 +145,13 @@ test("indicator decisions update the request row without interpreting HTML", asy
   const { dom, root } = adminFixture();
   const instance = initializeAdminPage(root, {
     fetchImpl: async () => new Response(JSON.stringify({
-      ok: true, request: { userId: "42", status: "GRANTED" },
+      ok: true,
+      request: {
+        userId: "42",
+        status: "GRANTED",
+        decidedBy: "<img src=x onerror=privateFailure()>",
+        decidedAt: "2026-09-02T14:30:00.000Z",
+      },
     }), { status: 200, headers: { "Content-Type": "application/json" } }),
     showToast() {},
     windowRef: { confirm: () => true, location: { href: "" }, AbortController: dom.window.AbortController },
@@ -154,6 +164,13 @@ test("indicator decisions update the request row without interpreting HTML", asy
   assert.equal(row.dataset.requestStatus, "GRANTED");
   assert.equal(row.querySelector("[data-admin-request-status]").textContent, "GRANTED");
   assert.equal(row.querySelector("[data-admin-request-status]").querySelector("script"), null);
+  assert.equal(row.querySelector("[data-admin-decided-by]").hidden, false);
+  assert.equal(row.querySelector("[data-admin-decided-by-value]").textContent, "<img src=x onerror=privateFailure()>");
+  assert.equal(row.querySelector("[data-admin-decided-by-value] img"), null);
+  assert.equal(row.querySelector("[data-admin-decided-at]").hidden, false);
+  assert.equal(row.querySelector("[data-admin-decided-at] time").dateTime, "2026-09-02T14:30:00.000Z");
+  assert.equal(row.querySelector("[data-admin-decision-controls]"), null);
+  assert.equal(row.querySelectorAll('[data-admin-action="decision"]').length, 0);
   instance.dispose();
   dom.window.close();
 });

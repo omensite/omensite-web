@@ -39,6 +39,33 @@ test("decisions record the administrator and decision time", () => {
   assert.equal(decided.decidedAt, "2026-09-02T12:00:00.000Z");
 });
 
+test("only pending requests can be decided and resubmission reopens a decision", () => {
+  let timestamp = "2026-09-02T12:00:00.000Z";
+  const repository = createInMemoryIndicatorRequestRepository({ now: () => timestamp });
+  const pending = {
+    userId: "42",
+    discordUsername: "omen",
+    tradingViewUsername: "tv_one",
+    indicatorIds: ["demo-a"],
+  };
+  repository.upsertPending(pending);
+  repository.decide({ userId: "42", status: "GRANTED", actorId: "7" });
+
+  assert.throws(
+    () => repository.decide({ userId: "42", status: "DENIED", actorId: "8" }),
+    { code: "INDICATOR_REQUEST_NOT_PENDING" },
+  );
+  assert.equal(repository.findByUserId("42").status, "GRANTED");
+  assert.equal(repository.findByUserId("42").decidedBy, "7");
+
+  timestamp = "2026-09-02T13:00:00.000Z";
+  repository.upsertPending({ ...pending, tradingViewUsername: "tv_two" });
+  const denied = repository.decide({ userId: "42", status: "DENIED", actorId: "8" });
+  assert.equal(denied.status, "DENIED");
+  assert.equal(denied.tradingViewUsername, "tv_two");
+  assert.equal(denied.decidedBy, "8");
+});
+
 test("list uses a decision timestamp when it is newer than a request timestamp", () => {
   let timestamp = "2026-09-02T12:00:00.000Z";
   const repository = createInMemoryIndicatorRequestRepository({ now: () => timestamp });

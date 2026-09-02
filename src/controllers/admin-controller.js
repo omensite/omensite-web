@@ -23,6 +23,10 @@ const PUBLIC_ERRORS = Object.freeze({
     status: 422,
     message: "INDICATOR DECISION MUST BE GRANTED OR DENIED",
   }),
+  INDICATOR_REQUEST_NOT_PENDING: Object.freeze({
+    status: 409,
+    message: "INDICATOR REQUEST ALREADY DECIDED :: RESUBMIT TO REOPEN",
+  }),
 });
 
 function isStandardForm(req) {
@@ -56,9 +60,10 @@ export function createAdminController({ adminService }) {
 
     async signOutUser(req, res, next) {
       const userId = req.params.id;
-      const actorId = req.session.operator.id;
+      const actor = req.session.operator;
+      const actorId = actor.id;
       try {
-        await adminService.signOutUser({ userId, actorId });
+        await adminService.signOutUser({ userId, actor, actorId });
         if (isStandardForm(req)) return res.redirect(303, "/admin");
         const selfSignedOut = String(userId) === String(actorId);
         return res.json({
@@ -74,9 +79,10 @@ export function createAdminController({ adminService }) {
 
     async banUser(req, res, next) {
       const userId = req.params.id;
-      const actorId = req.session.operator.id;
+      const actor = req.session.operator;
+      const actorId = actor.id;
       try {
-        await adminService.banUser({ userId, actorId, reason: req.body?.reason ?? "" });
+        await adminService.banUser({ userId, actor, actorId, reason: req.body?.reason ?? "" });
         if (isStandardForm(req)) return res.redirect(303, "/admin");
         return res.json({
           ok: true,
@@ -91,7 +97,11 @@ export function createAdminController({ adminService }) {
     async unbanUser(req, res, next) {
       const userId = req.params.id;
       try {
-        await adminService.unbanUser({ userId, actorId: req.session.operator.id });
+        await adminService.unbanUser({
+          userId,
+          actor: req.session.operator,
+          actorId: req.session.operator.id,
+        });
         if (isStandardForm(req)) return res.redirect(303, "/admin");
         return res.json({ ok: true, user: findUser(adminService, userId), selfSignedOut: false });
       } catch (error) {
@@ -103,6 +113,7 @@ export function createAdminController({ adminService }) {
       try {
         const request = adminService.decideIndicatorRequest({
           userId: req.params.userId,
+          actor: req.session.operator,
           actorId: req.session.operator.id,
           status: req.body?.status,
         });

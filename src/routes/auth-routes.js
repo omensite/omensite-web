@@ -4,9 +4,9 @@ import { requireCsrf } from "../security/csrf.js";
 
 const notFound = (_req, res) => res.sendStatus(404);
 
-export function createAuthRoutes({ authConfig, authService, sessionRegistry }) {
+export function createAuthRoutes({ authConfig, authService, sessionRegistry, logger }) {
   const router = Router();
-  const authController = createAuthController({ authService, sessionRegistry });
+  const authController = createAuthController({ authService, sessionRegistry, logger });
 
   if (authConfig.mode === "demo") {
     router.post("/login", authController.login);

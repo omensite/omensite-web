@@ -1,19 +1,32 @@
 export function createInMemorySessionRegistry() {
   const byUser = new Map();
+  const revokedSessionIds = new Set();
 
   return {
     register(userId, sessionId) {
       const key = String(userId);
+      const normalizedSessionId = String(sessionId);
       const ids = byUser.get(key) ?? new Set();
-      ids.add(String(sessionId));
+      ids.add(normalizedSessionId);
       byUser.set(key, ids);
+      revokedSessionIds.delete(normalizedSessionId);
     },
 
     unregister(userId, sessionId) {
       const key = String(userId);
       const ids = byUser.get(key);
-      ids?.delete(String(sessionId));
+      const normalizedSessionId = String(sessionId);
+      ids?.delete(normalizedSessionId);
       if (ids?.size === 0) byUser.delete(key);
+      revokedSessionIds.delete(normalizedSessionId);
+    },
+
+    markRevoked(sessionId) {
+      revokedSessionIds.add(String(sessionId));
+    },
+
+    isRevoked(sessionId) {
+      return revokedSessionIds.has(String(sessionId));
     },
 
     listSessionIds(userId) {
@@ -28,6 +41,7 @@ export function createInMemorySessionRegistry() {
       const key = String(userId);
       const ids = [...(byUser.get(key) ?? [])];
       byUser.delete(key);
+      ids.forEach((sessionId) => revokedSessionIds.delete(sessionId));
       return ids;
     },
   };

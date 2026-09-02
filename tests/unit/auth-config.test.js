@@ -27,6 +27,20 @@ test("demo configuration parses roles and refresh minutes", () => {
   assert.equal(config.roleRefreshMs, 300_000);
 });
 
+test("role refresh configuration cannot exceed the five-minute authorization ceiling", () => {
+  const config = readAuthConfig({
+    env: {
+      AUTH_MODE: "demo",
+      SESSION_SECRET: "test-secret",
+      DEMO_ROLES: "Admin",
+      DISCORD_ROLE_REFRESH_MINUTES: "60",
+    },
+    nodeEnvironment: "development",
+  });
+
+  assert.equal(config.roleRefreshMs, 300_000);
+});
+
 test("production rejects demo mode", () => {
   assert.throws(() => readAuthConfig({
     env: { AUTH_MODE: "demo", SESSION_SECRET: "test-secret" },

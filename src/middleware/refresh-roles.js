@@ -1,4 +1,4 @@
-import { ACCESS_ERRORS } from "../models/access.js";
+import { ACCESS_ERRORS, MAX_ROLE_SNAPSHOT_AGE_MS } from "../models/access.js";
 
 function currentTime(now) {
   const value = now();
@@ -23,6 +23,10 @@ function destroySession(session) {
   });
 }
 
+function accessError(code) {
+  return Object.assign(new Error("Operator access is no longer valid"), { code });
+}
+
 function expectsStructuredResponse(req) {
   return req.isOmensiteFragment === true
     || req.get?.("X-Omensite-Fragment") === "1"
@@ -37,31 +41,57 @@ export function createRefreshRoles({
 }) {
   return async function refreshRoles(req, res, next) {
     const operator = req.session?.operator;
-    if (!operator || !needsRefresh(operator, refreshAfterMs, now)) {
-      return next();
-    }
+    if (!operator) return next();
 
-    try {
-      req.session.operator = await authService.refreshOperator(operator);
-      return next();
-    } catch (error) {
+    async function rejectOperator(error) {
       const loginUrl = `/login?error=${loginErrorFor(error)}`;
       try {
-        sessionRegistry.unregister(operator.id, req.sessionID);
+        sessionRegistry.markRevoked?.(req.sessionID);
       } catch {
-        // Session destruction remains authoritative if registry bookkeeping fails.
+        // Cookie clearing and the live admission check remain authoritative.
       }
       delete req.session.operator;
+      res.clearCookie?.("connect.sid", { path: "/" });
       try {
         await destroySession(req.session);
-      } catch (destroyError) {
-        return next(destroyError);
+        try {
+          sessionRegistry.unregister(operator.id, req.sessionID);
+        } catch {
+          // The backing session is already gone.
+        }
+      } catch {
+        // Keep the revoked SID indexed so a later request can retry destruction.
       }
 
       if (expectsStructuredResponse(req)) {
         return res.status(401).json({ error: ACCESS_ERRORS.AUTH_REQUIRED, loginUrl });
       }
       return res.redirect(loginUrl);
+    }
+
+    try {
+      authService.assertOperatorAdmission?.(operator);
+      if (sessionRegistry.isRevoked?.(req.sessionID)) {
+        throw accessError("ACCESS_REVOKED");
+      }
+    } catch (error) {
+      return rejectOperator(error);
+    }
+
+    if (!needsRefresh(operator, Math.min(refreshAfterMs, MAX_ROLE_SNAPSHOT_AGE_MS), now)) {
+      return next();
+    }
+
+    try {
+      const refreshedOperator = await authService.refreshOperator(operator);
+      authService.assertOperatorAdmission?.(refreshedOperator);
+      if (sessionRegistry.isRevoked?.(req.sessionID)) {
+        throw accessError("ACCESS_REVOKED");
+      }
+      req.session.operator = refreshedOperator;
+      return next();
+    } catch (error) {
+      return rejectOperator(error);
     }
   };
 }

@@ -55,7 +55,12 @@ test("successful mutations return refreshed safe user and request state", async 
 
   await controller.banUser(requestHarness({ body: { reason: "Policy violation" } }), response, assert.fail);
 
-  assert.deepEqual(calls, [{ userId: "42", actorId: "7", reason: "Policy violation" }]);
+  assert.deepEqual(calls, [{
+    userId: "42",
+    actor: { id: "7", username: "admin", capabilities: ["admin"] },
+    actorId: "7",
+    reason: "Policy violation",
+  }]);
   assert.deepEqual(response.body, { ok: true, user: dashboard.users[0], selfSignedOut: false });
 });
 
@@ -78,6 +83,27 @@ test("known Admin failures return only safe public messages", async () => {
     message: "SESSION CONTROL PARTIALLY FAILED :: REVIEW ACTIVE SESSIONS",
   });
   assert.doesNotMatch(JSON.stringify(response.body), /private-store/);
+});
+
+test("an already-decided indicator request returns a stable conflict", async () => {
+  const controller = createAdminController({
+    adminService: {
+      decideIndicatorRequest() {
+        throw Object.assign(new Error("private decision detail"), { code: "INDICATOR_REQUEST_NOT_PENDING" });
+      },
+    },
+  });
+  const response = responseHarness();
+
+  await controller.decideIndicatorRequest(requestHarness({ body: { status: "DENIED" } }), response, assert.fail);
+
+  assert.equal(response.statusCode, 409);
+  assert.deepEqual(response.body, {
+    ok: false,
+    error: "INDICATOR_REQUEST_NOT_PENDING",
+    message: "INDICATOR REQUEST ALREADY DECIDED :: RESUBMIT TO REOPEN",
+  });
+  assert.doesNotMatch(JSON.stringify(response.body), /private decision detail/);
 });
 
 test("unknown Admin failures continue to the application error boundary", async () => {

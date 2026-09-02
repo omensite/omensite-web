@@ -1,4 +1,4 @@
-import { ROLES } from "../models/access.js";
+import { MAX_ROLE_SNAPSHOT_AGE_MS, ROLES } from "../models/access.js";
 
 const AUTH_MODES = new Set(["demo", "discord"]);
 const DISCORD_KEYS = Object.freeze([
@@ -22,7 +22,7 @@ function readRoleRefreshMs(env) {
   if (!Number.isFinite(minutes) || minutes <= 0) {
     throw new Error("DISCORD_ROLE_REFRESH_MINUTES must be a positive number");
   }
-  return minutes * 60_000;
+  return Math.min(minutes * 60_000, MAX_ROLE_SNAPSHOT_AGE_MS);
 }
 
 function readDiscordConfig(env) {

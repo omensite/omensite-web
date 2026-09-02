@@ -26,10 +26,16 @@ const LOGIN_FAILURES = Object.freeze({
 function discordFailureLocation(error) {
   if (error?.code === "ACCOUNT_BANNED") return "/login?error=account_banned";
   if (error?.code === "ACCESS_REVOKED") return "/login?error=access_revoked";
-  return "/login?error=discord_auth_failed";
+  if ([
+    "DISCORD_HTTP_ERROR",
+    "DISCORD_TIMEOUT",
+    "DISCORD_REQUEST_FAILED",
+    "DISCORD_INVALID_RESPONSE",
+  ].includes(error?.code)) return "/login?error=discord_auth_failed";
+  return null;
 }
 
-export function createAuthController({ authService, sessionRegistry }) {
+export function createAuthController({ authService, sessionRegistry, logger = console }) {
   async function establishOperator(req, operator, { complete = false } = {}) {
     const previousOperator = req.session.operator;
     const previousSessionId = req.sessionID;
@@ -86,7 +92,7 @@ export function createAuthController({ authService, sessionRegistry }) {
       }
     },
 
-    async completeDiscord(req, res) {
+    async completeDiscord(req, res, next) {
       const expectedState = req.session.oauthState;
       delete req.session.oauthState;
       if (expectedState) await saveSession(req);
@@ -103,7 +109,10 @@ export function createAuthController({ authService, sessionRegistry }) {
         await establishOperator(req, operator, { complete: true });
         return res.redirect("/auth/complete");
       } catch (error) {
-        return res.redirect(discordFailureLocation(error));
+        const location = discordFailureLocation(error);
+        if (!location) return next(error);
+        logger.warn?.("Discord OAuth callback failed", { code: error.code });
+        return res.redirect(location);
       }
     },
 
@@ -111,7 +120,7 @@ export function createAuthController({ authService, sessionRegistry }) {
       if (!req.session.operator) return res.redirect("/login");
       if (!req.session.authComplete) return res.redirect("/home");
       delete req.session.authComplete;
-      return res.render("layouts/login", { authMode: "discord", complete: true });
+      return res.render("layouts/login", { authMode: "discord", complete: true, authError: null });
     },
 
     async logout(req, res, next) {
@@ -119,16 +128,23 @@ export function createAuthController({ authService, sessionRegistry }) {
       const sessionId = req.sessionID;
       try {
         try {
-          if (operator?.id) sessionRegistry.unregister(operator.id, sessionId);
+          sessionRegistry.markRevoked?.(sessionId);
         } catch {
-          // Session destruction remains authoritative if registry bookkeeping fails.
+          // Cookie clearing and session destruction remain authoritative.
         }
+        delete req.session.operator;
+        res.clearCookie("connect.sid", { path: "/" });
         try {
           await authService.revokeOperatorToken?.(operator);
         } catch {
           // Local logout must not depend on provider availability.
         }
         await destroySession(req);
+        try {
+          if (operator?.id) sessionRegistry.unregister(operator.id, sessionId);
+        } catch {
+          // The backing session is already gone.
+        }
         return res.json({ ok: true, redirectTo: "/login" });
       } catch (error) {
         return next(error);

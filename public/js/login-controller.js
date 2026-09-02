@@ -4,6 +4,11 @@ import { startSphereRenderer } from "./sphere-renderer.js";
 
 const CREDENTIAL_ERROR = "> ERR :: CREDENTIALS REQUIRED — USER AND PASSKEY";
 const REQUEST_ERROR = "> ERR :: LOGIN REQUEST FAILED — RETRY";
+const LOGIN_FAILURES = Object.freeze({
+  CREDENTIALS_REQUIRED: CREDENTIAL_ERROR,
+  ACCOUNT_BANNED: "> ERR :: ACCESS FAILED — ACCOUNT BANNED",
+  ACCESS_REVOKED: "> ERR :: ACCESS FAILED — REQUIRED ROLE NOT PRESENT",
+});
 
 function replaceEntryWithStream({ documentRef, entry, root, reducedMotion, redirectTo, windowRef, stopSphere }) {
   const stream = documentRef.createElement("div");
@@ -98,12 +103,16 @@ export function initializeLoginController({
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ username: user.value, passkey: passkey.value }),
       });
-      if (response.status === 400) {
-        showError(CREDENTIAL_ERROR, true);
-        return;
-      }
       const result = await response.json();
-      if (!response.ok || !result.ok || typeof result.redirectTo !== "string") throw new Error("Login request failed");
+      if (!response.ok || !result.ok) {
+        const message = LOGIN_FAILURES[result?.error];
+        if (message) {
+          showError(message, result.error === "CREDENTIALS_REQUIRED");
+          return;
+        }
+        throw new Error("Login request failed");
+      }
+      if (typeof result.redirectTo !== "string") throw new Error("Login request failed");
       await replaceEntryWithStream({ documentRef, entry: form, root, reducedMotion, redirectTo: result.redirectTo, windowRef, stopSphere: stopLoginSphere });
     } catch {
       showError(REQUEST_ERROR);

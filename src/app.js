@@ -23,6 +23,7 @@ import { createJournalRoutes } from "./routes/journal-routes.js";
 import { createIndicatorRoutes } from "./routes/indicator-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
+import { LOGIN_ERROR_MESSAGES } from "./models/access.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,6 +96,7 @@ export function createApp({
     requestRepository: indicatorRequestRepository,
     sessionStore: resolvedSessionStore,
     catalog: resolvedIndicatorCatalog,
+    assertOperatorAdmission: (operator) => resolvedAuthService.assertOperatorAdmission?.(operator),
   });
 
   const app = express();
@@ -133,8 +135,19 @@ export function createApp({
   app.get("/", (req, res) => res.redirect(req.session.operator ? "/home" : "/login"));
   app.get("/login", (req, res) => req.session.operator
     ? res.redirect("/home")
-    : res.render("layouts/login", { authMode: resolvedAuthConfig.mode, complete: false }));
-  app.use("/auth", createAuthRoutes({ authConfig: resolvedAuthConfig, authService: resolvedAuthService, sessionRegistry }));
+    : res.render("layouts/login", {
+        authMode: resolvedAuthConfig.mode,
+        complete: false,
+        authError: typeof req.query.error === "string"
+          ? LOGIN_ERROR_MESSAGES[req.query.error] ?? null
+          : null,
+      }));
+  app.use("/auth", createAuthRoutes({
+    authConfig: resolvedAuthConfig,
+    authService: resolvedAuthService,
+    sessionRegistry,
+    logger,
+  }));
   configureRoutes?.(app);
   app.use(requireAuth, refreshRoles);
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));

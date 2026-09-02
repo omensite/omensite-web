@@ -131,7 +131,7 @@ test("a successful fragment swap resets the main pane scroll position", async ()
   assert.equal(main.scrollTop, 0);
 });
 
-test("a 401 redirects to login without replacing the current route", async () => {
+test("a 401 preserves a validated relative login URL without replacing the current route", async () => {
   const dom = new JSDOM("<main data-main><section data-route-view>HOME</section></main>", { url: "http://localhost/home" });
   const redirects = [];
   const windowRef = {
@@ -144,15 +144,51 @@ test("a 401 redirects to login without replacing the current route", async () =>
   const controller = createNavigationController({
     documentRef: dom.window.document,
     windowRef,
-    fetchImpl: async () => new Response("", { status: 401 }),
+    fetchImpl: async () => Response.json({
+      error: "AUTH_REQUIRED",
+      loginUrl: "/login?error=access_revoked",
+    }, { status: 401 }),
     transition: { show() {}, hide() {}, fail() {} },
     initializePage() {},
   });
 
   await controller.navigate("/market-news");
 
-  assert.deepEqual(redirects, ["/login"]);
+  assert.deepEqual(redirects, ["/login?error=access_revoked"]);
   assert.match(dom.window.document.querySelector("[data-main]").textContent, /HOME/);
+});
+
+test("a 401 rejects unsafe or unknown login URLs", async () => {
+  for (const loginUrl of [
+    "https://evil.example/login",
+    "//evil.example/login",
+    "/admin",
+    "/login?error=arbitrary",
+    "/login?error=access_revoked&next=https://evil.example",
+  ]) {
+    const dom = new JSDOM("<main data-main><section data-route-view>HOME</section></main>", { url: "http://localhost/home" });
+    const redirects = [];
+    const windowRef = {
+      ...dom.window,
+      location: { href: dom.window.location.href, assign: (path) => redirects.push(path) },
+      history: dom.window.history,
+      addEventListener: dom.window.addEventListener.bind(dom.window),
+      removeEventListener: dom.window.removeEventListener.bind(dom.window),
+    };
+    const controller = createNavigationController({
+      documentRef: dom.window.document,
+      windowRef,
+      fetchImpl: async () => Response.json({ error: "AUTH_REQUIRED", loginUrl }, { status: 401 }),
+      transition: { show() {}, hide() {}, fail() {} },
+      initializePage() {},
+    });
+
+    await controller.navigate("/market-news");
+
+    assert.deepEqual(redirects, ["/login"]);
+    controller.dispose();
+    dom.window.close();
+  }
 });
 
 test("a denied navigation holds the overlay, reports permission failure, and retains route history", async () => {

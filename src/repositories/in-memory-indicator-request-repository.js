@@ -18,6 +18,12 @@ function notFoundError() {
   return error;
 }
 
+function notPendingError() {
+  const error = new Error("Indicator request is not pending");
+  error.code = "INDICATOR_REQUEST_NOT_PENDING";
+  return error;
+}
+
 export function createInMemoryIndicatorRequestRepository({ now = () => new Date().toISOString() } = {}) {
   const byUserId = new Map();
 
@@ -58,6 +64,7 @@ export function createInMemoryIndicatorRequestRepository({ now = () => new Date(
       const key = String(userId);
       const existing = byUserId.get(key);
       if (!existing) throw notFoundError();
+      if (existing.status !== "PENDING") throw notPendingError();
       const record = {
         ...existing,
         status,

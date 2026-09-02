@@ -41,6 +41,20 @@ function updateRequestRow(row, request) {
     if (className.startsWith("indicator-state-")) status.classList.remove(className);
   }
   status.classList.add(`indicator-state-${request.status.toLowerCase()}`);
+  const decidedBy = row.querySelector("[data-admin-decided-by]");
+  const decidedByValue = row.querySelector("[data-admin-decided-by-value]");
+  if (decidedBy && decidedByValue && typeof request.decidedBy === "string") {
+    decidedByValue.textContent = request.decidedBy;
+    decidedBy.hidden = false;
+  }
+  const decidedAt = row.querySelector("[data-admin-decided-at]");
+  const decidedAtTime = decidedAt?.querySelector("time");
+  if (decidedAt && decidedAtTime && typeof request.decidedAt === "string") {
+    decidedAtTime.textContent = request.decidedAt;
+    decidedAtTime.dateTime = request.decidedAt;
+    decidedAt.hidden = false;
+  }
+  if (request.status !== "PENDING") row.querySelector("[data-admin-decision-controls]")?.remove();
 }
 
 function requestBody(button) {

@@ -35,6 +35,7 @@
             <div data-auth-complete data-redirect-to="/home"></div>
           <% } else if (authMode === "discord") { %>
             <div class="login-prompt">&gt; authenticate with the authorized Discord server</div>
+            <% if (authError) { %><div class="login-err" role="alert" data-login-page-error><%= authError %></div><% } %>
             <a class="btn btn-primary btn-login" href="/auth/discord" data-discord-login>[ CONTINUE WITH DISCORD ]</a>
           <% } else { %>
             <form class="login-form" action="/auth/login" method="post" novalidate data-login-form>
@@ -45,7 +46,7 @@
               <label class="field">PASSKEY
                 <input name="passkey" type="password" placeholder="••••••••" autocomplete="off" required data-login-passkey>
               </label>
-              <div class="login-err" hidden data-login-error></div>
+              <div class="login-err" <%= authError ? "" : "hidden" %> data-login-error<%= authError ? " data-login-page-error" : "" %>><%= authError ?? "" %></div>
               <button class="btn btn-primary btn-login" type="submit" data-login-submit>[ LOGIN ]</button>
               <div class="login-fineprint">SESSION WILL BE ENCRYPTED. UNAUTHORIZED ACCESS IS LOGGED.</div>
             </form>

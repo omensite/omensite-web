@@ -110,7 +110,12 @@ test("Discord completion performs final admission and returns a stable banned re
       throw Object.assign(new Error("private ban detail"), { code: "ACCOUNT_BANNED" });
     },
   };
-  const agent = request.agent(createTestApp({ authMode: "discord", authService, sessionRegistry }));
+  const agent = request.agent(createTestApp({
+    authMode: "discord",
+    authService,
+    sessionRegistry,
+    logger: { warn() {}, error() {} },
+  }));
   await agent.get("/auth/discord");
 
   await agent.get("/auth/discord/callback?code=code&state=correct")
@@ -126,6 +131,29 @@ test("fragment requests receive 401 instead of a redirect", async () => {
 
 test("login identifies the current v0.1.1 release", async () => {
   await request(createTestApp()).get("/login").expect(200).expect(/OMENSITE TRADING TERMINAL v0\.1\.1/);
+});
+
+test("login renders only allowlisted authentication failures with fixed messages", async () => {
+  const outcomes = [
+    ["invalid_oauth_state", "AUTHENTICATION FAILED :: INVALID OR EXPIRED REQUEST"],
+    ["discord_auth_failed", "AUTHENTICATION FAILED :: DISCORD UNAVAILABLE"],
+    ["access_revoked", "ACCESS FAILED :: REQUIRED ROLE NOT PRESENT"],
+    ["account_banned", "ACCESS FAILED :: ACCOUNT BANNED"],
+    ["role_sync_failed", "AUTHENTICATION FAILED :: ROLE SYNC UNAVAILABLE"],
+  ];
+
+  for (const [code, message] of outcomes) {
+    await request(createTestApp()).get(`/login?error=${code}&message=private-provider-body`)
+      .expect(200)
+      .expect(new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+      .expect((response) => assert.doesNotMatch(response.text, /private-provider-body/));
+  }
+
+  await request(createTestApp()).get("/login?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
+    .expect(200)
+    .expect((response) => {
+      assert.doesNotMatch(response.text, /alert\(1\)|data-login-page-error/);
+    });
 });
 
 test("demo and Discord modes expose only their matching login entry point", async () => {
@@ -173,15 +201,75 @@ test("Discord callback rejects a mismatched state without authenticating", async
 
 test("OAuth state is consumed before provider work even when authentication fails", async () => {
   let completionCalls = 0;
+  const warnings = [];
   const authService = {
     beginDiscord: () => ({ state: "single-use", authorizationUrl: "/discord" }),
     completeDiscord: async () => { completionCalls += 1; throw Object.assign(new Error("provider unavailable"), { code: "DISCORD_REQUEST_FAILED" }); },
   };
-  const agent = request.agent(createTestApp({ authMode: "discord", authService, logger: { error() {} } }));
+  const agent = request.agent(createTestApp({
+    authMode: "discord",
+    authService,
+    logger: { warn: (...values) => warnings.push(values), error() {} },
+  }));
   await agent.get("/auth/discord");
   await agent.get("/auth/discord/callback?code=code&state=single-use").expect(302).expect("Location", "/login?error=discord_auth_failed");
   await agent.get("/auth/discord/callback?code=code&state=single-use").expect(302).expect("Location", "/login?error=invalid_oauth_state");
   assert.equal(completionCalls, 1);
+  assert.deepEqual(warnings, [["Discord OAuth callback failed", { code: "DISCORD_REQUEST_FAILED" }]]);
+  assert.doesNotMatch(JSON.stringify(warnings), /provider unavailable|code=code/);
+});
+
+test("OAuth callback maps known auth/provider codes and forwards unexpected faults", async () => {
+  const known = [
+    ["ACCOUNT_BANNED", "/login?error=account_banned"],
+    ["ACCESS_REVOKED", "/login?error=access_revoked"],
+    ["DISCORD_HTTP_ERROR", "/login?error=discord_auth_failed"],
+    ["DISCORD_TIMEOUT", "/login?error=discord_auth_failed"],
+    ["DISCORD_REQUEST_FAILED", "/login?error=discord_auth_failed"],
+    ["DISCORD_INVALID_RESPONSE", "/login?error=discord_auth_failed"],
+  ];
+
+  for (const [code, location] of known) {
+    const warnings = [];
+    const authService = {
+      beginDiscord: () => ({ state: "known", authorizationUrl: "/discord" }),
+      completeDiscord: async () => {
+        throw Object.assign(new Error("private access_token=response-body"), { code });
+      },
+    };
+    const agent = request.agent(createTestApp({
+      authMode: "discord",
+      authService,
+      logger: { warn: (...values) => warnings.push(values), error() {} },
+    }));
+    await agent.get("/auth/discord");
+    await agent.get("/auth/discord/callback?code=private-code&state=known")
+      .expect(302).expect("Location", location);
+    assert.deepEqual(warnings, [["Discord OAuth callback failed", { code }]]);
+    assert.doesNotMatch(JSON.stringify(warnings), /access_token|response-body|private-code/);
+  }
+
+  const unexpected = Object.assign(new Error("private unexpected body"), { accessToken: "secret-token" });
+  const boundaryErrors = [];
+  const warnings = [];
+  const authService = {
+    beginDiscord: () => ({ state: "unexpected", authorizationUrl: "/discord" }),
+    completeDiscord: async () => { throw unexpected; },
+  };
+  const agent = request.agent(createTestApp({
+    authMode: "discord",
+    authService,
+    logger: {
+      warn: (...values) => warnings.push(values),
+      error: (error) => boundaryErrors.push(error),
+    },
+  }));
+  await agent.get("/auth/discord");
+  await agent.get("/auth/discord/callback?code=private-code&state=unexpected")
+    .expect(500)
+    .expect((response) => assert.doesNotMatch(response.text, /private unexpected body|secret-token|private-code/));
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(boundaryErrors, [unexpected]);
 });
 
 test("successful Discord callback regenerates and registers the session then renders completion", async () => {
@@ -265,4 +353,32 @@ test("logout still revokes and destroys when session registry cleanup fails", as
   await agent.post("/auth/logout").set("X-CSRF-Token", csrfToken).expect(200);
   assert.equal(revocations, 1);
   await agent.get("/home").expect(302).expect("Location", "/login");
+});
+
+test("logout destruction failure retains a revoked registry entry and clears the client cookie", async () => {
+  const sessionStore = new session.MemoryStore();
+  const originalDestroy = sessionStore.destroy.bind(sessionStore);
+  const sessionRegistry = createInMemorySessionRegistry();
+  const app = createTestApp({ sessionStore, sessionRegistry, logger: { error() {} } });
+  const agent = request.agent(app);
+  const loginResponse = await agent.post("/auth/login")
+    .send({ username: "retryable-logout", passkey: "preview" })
+    .expect(200);
+  const csrfToken = await readCsrfToken(agent, "/home");
+  const [sessionId] = sessionRegistry.listSessionIds("demo:retryable-logout");
+  const originalCookie = loginResponse.headers["set-cookie"][0].split(";", 1)[0];
+  sessionStore.destroy = (candidate, callback) => {
+    if (candidate === sessionId) return callback(new Error("private store failure"));
+    return originalDestroy(candidate, callback);
+  };
+
+  const response = await agent.post("/auth/logout")
+    .set("X-CSRF-Token", csrfToken)
+    .expect(500)
+    .expect((result) => assert.doesNotMatch(result.text, /OMENSITE OVERVIEW|private store failure/));
+
+  assert.match(response.headers["set-cookie"]?.join(";") ?? "", /connect\.sid=;/);
+  assert.deepEqual(sessionRegistry.listSessionIds("demo:retryable-logout"), [sessionId]);
+  assert.equal(sessionRegistry.isRevoked(sessionId), true);
+  await request(app).get("/home").set("Cookie", originalCookie).expect(302).expect("Location", "/login?error=access_revoked");
 });

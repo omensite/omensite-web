@@ -94,22 +94,26 @@
               <% } %>
             </span>
             <time datetime="<%= request.requestedAt %>"><%= request.requestedAt %></time>
-            <% if (request.decidedBy) { %><span data-admin-decided-by>DECIDED BY :: <%= request.decidedBy %></span><% } %>
-            <% if (request.decidedAt) { %><span data-admin-decided-at>DECIDED AT :: <time datetime="<%= request.decidedAt %>"><%= request.decidedAt %></time></span><% } %>
+            <span data-admin-decided-by <%= request.decidedBy ? "" : "hidden" %>>DECIDED BY :: <span data-admin-decided-by-value><%= request.decidedBy ?? "" %></span></span>
+            <span data-admin-decided-at <%= request.decidedAt ? "" : "hidden" %>>DECIDED AT :: <time datetime="<%= request.decidedAt ?? "" %>"><%= request.decidedAt ?? "" %></time></span>
           </div>
           <output class="admin-request-state indicator-state-<%= request.status.toLowerCase() %>" data-field="STATE" data-admin-request-status><%= request.status %></output>
-          <div class="admin-actions" data-field="DECISION">
-            <% for (const status of ["GRANTED", "DENIED"]) { %>
-              <form action="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision" method="post">
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <input type="hidden" name="status" value="<%= status %>">
-                <button class="btn <%= status === "DENIED" ? "btn-danger" : "" %>" type="submit"
-                  data-admin-action="decision" data-admin-decision="<%= status %>"
-                  data-admin-action-endpoint="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision"
-                  data-admin-confirm="MARK THIS REQUEST <%= status %>?">[ <%= status %> ]</button>
-              </form>
-            <% } %>
-          </div>
+          <% if (request.status === "PENDING") { %>
+            <div class="admin-actions" data-field="DECISION" data-admin-decision-controls>
+              <% for (const status of ["GRANTED", "DENIED"]) { %>
+                <form action="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision" method="post">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="status" value="<%= status %>">
+                  <button class="btn <%= status === "DENIED" ? "btn-danger" : "" %>" type="submit"
+                    data-admin-action="decision" data-admin-decision="<%= status %>"
+                    data-admin-action-endpoint="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision"
+                    data-admin-confirm="MARK THIS REQUEST <%= status %>?">[ <%= status %> ]</button>
+                </form>
+              <% } %>
+            </div>
+          <% } else { %>
+            <div class="admin-actions" data-field="DECISION"><span>DECISION RECORDED</span></div>
+          <% } %>
         </li>
       <% } %>
     </ol>

@@ -2,6 +2,13 @@ const FAILURE_MESSAGE = "ROUTE LOAD FAILED :: CURRENT BUFFER RETAINED";
 const ROUTE_NOT_FOUND_MESSAGE = "ROUTE NOT FOUND :: CURRENT BUFFER RETAINED";
 const SYSTEM_ERROR_MESSAGE = "SYSTEM ERROR :: RETRY ROUTE";
 const ACCESS_DENIED_MESSAGE = "ACCESS FAILED :: INSUFFICIENT PERMISSIONS";
+const LOGIN_ERROR_CODES = new Set([
+  "invalid_oauth_state",
+  "discord_auth_failed",
+  "access_revoked",
+  "account_banned",
+  "role_sync_failed",
+]);
 
 function reducedMotion(windowRef) {
   return Boolean(windowRef.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
@@ -9,6 +16,21 @@ function reducedMotion(windowRef) {
 
 function wait(windowRef, milliseconds) {
   return new Promise((resolve) => windowRef.setTimeout(resolve, milliseconds));
+}
+
+function safeLoginUrl(value, windowRef) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return "/login";
+  try {
+    const current = new URL(windowRef.location.href);
+    const candidate = new URL(value, current);
+    if (candidate.origin !== current.origin || candidate.pathname !== "/login" || candidate.hash) return "/login";
+    const entries = [...candidate.searchParams.entries()];
+    if (entries.length === 0) return "/login";
+    if (entries.length !== 1 || entries[0][0] !== "error" || !LOGIN_ERROR_CODES.has(entries[0][1])) return "/login";
+    return `${candidate.pathname}${candidate.search}`;
+  } catch {
+    return "/login";
+  }
 }
 
 function parseRoute(documentRef, html) {
@@ -55,8 +77,9 @@ export function createNavigationController({ documentRef, windowRef, fetchImpl, 
 
       if (currentRequest !== requestId || disposed) return;
       if (response.status === 401) {
+        const payload = await response.json().catch(() => null);
         transition.hide();
-        windowRef.location.assign("/login");
+        windowRef.location.assign(safeLoginUrl(payload?.loginUrl, windowRef));
         return;
       }
       if (response.status === 403) {
