@@ -17,7 +17,7 @@ function calendarFixture() {
       <div data-calendar-status>
         <span data-calendar-link-status></span>
         <span>VISIBLE :: <strong data-calendar-count>3</strong></span>
-        <span>UPDATED :: <time data-calendar-updated></time></span>
+        <span>UPDATED :: <time data-calendar-updated datetime="2026-09-02T12:01:00.000Z">2026-09-02T12:01:00.000Z</time></span>
       </div>
       <div data-calendar-events>
         <article data-calendar-event data-event-id="1" data-timestamp="2026-09-02T12:00:00.000Z" data-market="usd" data-impact="high"><time data-event-time></time></article>
@@ -64,6 +64,22 @@ test("timestamps and day headers are formatted through the workstation timezone"
   assert.match(root.querySelector("[data-event-time]").textContent, /\d{1,2}:\d{2}/);
   assert.ok(root.querySelectorAll("[data-calendar-day]").length >= 2);
   assert.equal(root.querySelector("[data-calendar-timezone]").textContent, "TIMES LOCAL");
+  instance.dispose();
+  dom.window.close();
+});
+
+test("initial hydration formats the updated timestamp locally and preserves its ISO datetime", () => {
+  const { dom, root } = calendarFixture();
+  const instance = initializeMarketNewsPage(root, {
+    windowRef: dom.window,
+    fetchImpl: async () => new Response(),
+    refreshIntervalMs: 0,
+  });
+  const updated = root.querySelector("[data-calendar-updated]");
+
+  assert.equal(updated.dateTime, "2026-09-02T12:01:00.000Z");
+  assert.doesNotMatch(updated.textContent, /^2026-09-02T/);
+  assert.match(updated.textContent, /\d/);
   instance.dispose();
   dom.window.close();
 });

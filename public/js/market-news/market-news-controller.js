@@ -36,6 +36,15 @@ function createEventRow(documentRef, event) {
   return row;
 }
 
+function formatUpdatedTime(root, timestamp) {
+  const updated = root.querySelector("[data-calendar-updated]");
+  if (!updated) return;
+  const value = timestamp === undefined ? updated.dateTime : timestamp;
+  updated.dateTime = value || "";
+  const date = new Date(value || "");
+  updated.textContent = Number.isNaN(date.getTime()) ? "--" : date.toLocaleString();
+}
+
 function groupRows(root, windowRef) {
   const documentRef = root.ownerDocument;
   const eventsContainer = root.querySelector("[data-calendar-events]");
@@ -151,12 +160,7 @@ export function initializeMarketNewsPage(root, {
     if (!eventsContainer) return;
     eventsContainer.replaceChildren(...calendar.events.map((event) => createEventRow(root.ownerDocument, event)));
     root.dataset.calendarState = calendar.state;
-    const updated = root.querySelector("[data-calendar-updated]");
-    if (updated) {
-      updated.dateTime = calendar.updatedAt || "";
-      const date = new Date(calendar.updatedAt || "");
-      updated.textContent = Number.isNaN(date.getTime()) ? "--" : date.toLocaleString();
-    }
+    formatUpdatedTime(root, calendar.updatedAt);
     setLinkStatus(calendar.state === "live" ? "LINK :: LIVE" : "LINK :: STALE DATA");
     groupRows(root, windowRef);
     applyFilters();
@@ -204,6 +208,7 @@ export function initializeMarketNewsPage(root, {
   }
 
   groupRows(root, windowRef);
+  formatUpdatedTime(root);
   applyFilters();
   root.addEventListener("click", onClick);
 
