@@ -4,10 +4,13 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { createDiscordOAuthProvider } from "./providers/discord-oauth-provider.js";
 import { createInMemoryBanRepository } from "./repositories/in-memory-ban-repository.js";
+import { createInMemoryIndicatorRequestRepository } from "./repositories/in-memory-indicator-request-repository.js";
 import { createInMemorySessionRegistry } from "./repositories/in-memory-session-registry.js";
 import { createInMemoryUserRepository } from "./repositories/in-memory-user-repository.js";
 import { createAuthService } from "./services/auth-service.js";
+import { createIndicatorAccessService } from "./services/indicator-access-service.js";
 import { createRolePolicy } from "./services/role-policy.js";
+import { createIndicatorCatalog } from "./config/indicator-catalog.js";
 import { ensureCsrfToken } from "./security/csrf.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { createRefreshRoles } from "./middleware/refresh-roles.js";
@@ -15,6 +18,7 @@ import { fragmentRequest } from "./middleware/fragment-request.js";
 import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
 import { createJournalRoutes } from "./routes/journal-routes.js";
+import { createIndicatorRoutes } from "./routes/indicator-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 
@@ -31,6 +35,9 @@ export function createApp({
   userRepository = createInMemoryUserRepository(),
   banRepository = createInMemoryBanRepository(),
   sessionRegistry = createInMemorySessionRegistry(),
+  indicatorRequestRepository = createInMemoryIndicatorRequestRepository(),
+  indicatorCatalog,
+  indicatorAccessService,
   marketNewsService = createMarketNewsService({
     provider: createEconomiciumCalendarProvider(),
   }),
@@ -71,6 +78,13 @@ export function createApp({
     refreshAfterMs: resolvedAuthConfig.roleRefreshMs,
     sessionRegistry,
   });
+  const resolvedIndicatorCatalog = indicatorCatalog ?? createIndicatorCatalog({
+    authMode: resolvedAuthConfig.mode,
+  });
+  const resolvedIndicatorAccessService = indicatorAccessService ?? createIndicatorAccessService({
+    catalog: resolvedIndicatorCatalog,
+    requestRepository: indicatorRequestRepository,
+  });
 
   const app = express();
   app.locals.authConfig = resolvedAuthConfig;
@@ -79,6 +93,8 @@ export function createApp({
   app.locals.banRepository = banRepository;
   app.locals.sessionRegistry = sessionRegistry;
   app.locals.sessionStore = resolvedSessionStore;
+  app.locals.indicatorCatalog = resolvedIndicatorCatalog;
+  app.locals.indicatorRequestRepository = indicatorRequestRepository;
   app.set("trust proxy", trustProxy ?? (environment === "production" ? 1 : false));
   app.set("view engine", "ejs");
   app.set("views", path.join(sourceDirectory, "..", "views"));
@@ -109,6 +125,7 @@ export function createApp({
   app.use("/auth", createAuthRoutes({ authConfig: resolvedAuthConfig, authService: resolvedAuthService, sessionRegistry }));
   configureRoutes?.(app);
   app.use(requireAuth, refreshRoles);
+  app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));
   app.use(createJournalRoutes());
 

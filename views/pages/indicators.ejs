@@ -1,6 +1,77 @@
-<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+<%
+  const request = page.data.request;
+  const statusLabel = page.data.status.replaceAll("_", " ");
+  const activeCatalog = page.data.catalog.filter((indicator) => indicator.active);
+%>
+<section class="route indicator-access" data-route-view data-route-key="<%= page.route.key %>"
+  data-indicator-access-root data-request-status="<%= page.data.status %>"
+  data-catalog-available="<%= activeCatalog.length > 0 %>" aria-busy="false">
   <%- include("../partials/route-head", { page }) %>
-  <div class="section-label">&gt; INDICATOR ACCESS</div><%- include("../partials/empty-state", { lines: ["[ NO INDICATORS PROVISIONED ]", "ENTITLEMENT SYNC PENDING :: INDICATOR ACCESS READY"] }) %>
-  <div style="height:24px"></div>
-  <section class="panel howto"><div class="panel-kicker">&gt; TRADINGVIEW ACCESS INSTRUCTIONS</div><ol><li>copy the invite code issued to your operator ID</li><li>open TradingView &gt; indicators &gt; invite-only scripts</li><li>paste the code to unlock the entitlement</li><li>entitlement syncs back to this terminal within 60s</li></ol><div class="code-row"><span class="code-field">[ NO CODE ISSUED ]</span><button class="btn" type="button" disabled>COPY</button></div></section>
+
+  <div class="indicator-access-meta" aria-label="Indicator access identity">
+    <div><span>OPERATOR ::</span> <strong data-indicator-identity><%= page.operator.displayName || page.operator.username %></strong></div>
+    <div data-indicator-role-sync><span>ROLE SYNC ::</span> <time datetime="<%= page.operator.rolesSyncedAt %>"><%= page.operator.rolesSyncedAt %></time></div>
+    <div><span>AUTH LINK ::</span> <strong><%= page.operator.authMode.toUpperCase() %></strong></div>
+  </div>
+
+  <section class="indicator-console" aria-labelledby="indicator-catalog-heading">
+    <div class="indicator-console-head">
+      <div>
+        <h2 id="indicator-catalog-heading" class="section-label">&gt; ACTIVE SCRIPT CATALOG</h2>
+        <p>REQUESTS ARE RECORDED HERE. ACCESS IS MANUALLY GRANTED BY AN AUTHOR THROUGH TRADINGVIEW MANAGE ACCESS.</p>
+      </div>
+      <output class="indicator-request-state indicator-state-<%= page.data.status.toLowerCase() %>"
+        data-indicator-request-status aria-live="polite"><%= statusLabel %></output>
+    </div>
+
+    <% if (activeCatalog.length) { %>
+      <div class="indicator-catalog-head" aria-hidden="true">
+        <span>SCRIPT</span><span>VERSION</span><span>STATE</span><span>ACTION</span>
+      </div>
+      <ol class="indicator-catalog" aria-label="Available indicator scripts">
+        <% for (const indicator of activeCatalog) { %>
+          <li class="indicator-catalog-row" data-indicator-catalog-row data-indicator-id="<%= indicator.id %>">
+            <div class="indicator-catalog-main" data-field="SCRIPT">
+              <strong><%= indicator.name %></strong>
+              <span><%= indicator.description %></span>
+            </div>
+            <span data-field="VERSION"><%= indicator.version %></span>
+            <span data-field="STATE"><%= indicator.demo ? "DEMO RECORD" : "ACTIVE" %></span>
+            <span data-field="ACTION">
+              <% if (page.data.status === "GRANTED" && indicator.tradingViewUrl && request?.indicatorIds.includes(indicator.id)) { %>
+                <a href="<%= indicator.tradingViewUrl %>" target="_blank" rel="noopener noreferrer">OPEN IN TRADINGVIEW</a>
+              <% } else { %>
+                <span class="t-dim"><%= page.data.status === "GRANTED" ? "NO LINK CONFIGURED" : "AWAITING GRANT" %></span>
+              <% } %>
+            </span>
+          </li>
+        <% } %>
+      </ol>
+    <% } else { %>
+      <div class="indicator-catalog-empty">[ NO ACTIVE INDICATORS CONFIGURED ]</div>
+    <% } %>
+  </section>
+
+  <section class="indicator-request" aria-labelledby="indicator-request-heading">
+    <div>
+      <h2 id="indicator-request-heading" class="section-label">&gt; REQUEST INVITE-ONLY ACCESS</h2>
+      <p>ONE REQUEST COVERS EVERY ACTIVE SCRIPT. A GRANT IN THIS TERMINAL CONFIRMS THE AUTHOR COMPLETED THE MANUAL TRADINGVIEW STEP.</p>
+    </div>
+    <form action="/api/indicator-access/requests" method="post" data-indicator-request-form>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label class="field" for="trading-view-username">TRADINGVIEW USERNAME
+        <input id="trading-view-username" name="tradingViewUsername"
+          value="<%= request?.tradingViewUsername ?? "" %>" required minlength="3" maxlength="64"
+          pattern="[A-Za-z0-9_-]{3,64}" autocomplete="username" aria-describedby="trading-view-username-help">
+      </label>
+      <p id="trading-view-username-help" class="indicator-field-help">3–64 LETTERS, NUMBERS, UNDERSCORES, OR HYPHENS</p>
+      <label class="terminal-check">
+        <input name="consent" type="checkbox" value="true" required>
+        <span>I EXPLICITLY REQUEST ACCESS TO EVERY ACTIVE SCRIPT</span>
+      </label>
+      <button class="btn btn-primary" type="submit" data-indicator-submit <%= activeCatalog.length ? "" : "disabled" %>>[ REQUEST ACCESS TO ALL ]</button>
+    </form>
+    <output class="indicator-request-feedback<%= page.data.notice ? " indicator-feedback-error" : "" %>"
+      data-indicator-request-feedback aria-live="polite"><%= page.data.notice?.message ?? "" %></output>
+  </section>
 </section>

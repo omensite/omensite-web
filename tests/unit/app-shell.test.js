@@ -21,6 +21,18 @@ const marketNewsFragment = `
     <div data-calendar-offline hidden></div>
   </section>`;
 
+const indicatorFragment = `
+  <section data-route-view data-route-key="indicators" data-indicator-access-root data-request-status="NOT_REQUESTED">
+    <output data-indicator-request-status>NOT REQUESTED</output>
+    <form data-indicator-request-form>
+      <input name="_csrf" value="csrf-token">
+      <input name="tradingViewUsername" value="omen_tv">
+      <input name="consent" type="checkbox" value="true" checked>
+      <button type="submit" data-indicator-submit>REQUEST</button>
+    </form>
+    <output data-indicator-request-feedback></output>
+  </section>`;
+
 test("home journal count hydrates from legacy local entries after full and fragment renders", async () => {
   const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, {
     url: "http://localhost/home",
@@ -136,4 +148,35 @@ test("logout sends the authenticated page CSRF token", async (t) => {
   dom.window.document.querySelector("[data-logout]").click();
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
   assert.equal(requestOptions.headers["X-CSRF-Token"], "csrf-from-session");
+});
+
+test("Indicators routes are progressively enhanced by the app shell", async (t) => {
+  const dom = new JSDOM(`<div data-shell-body><main data-main>${indicatorFragment}</main></div>`, {
+    url: "http://localhost/indicators",
+  });
+  dom.window.matchMedia = () => ({ matches: true });
+  let requestOptions;
+  const instance = initializeAppShell({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return new Response(JSON.stringify({ ok: true, request: { status: "PENDING" } }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+  t.after(() => {
+    instance.dispose();
+    dom.window.close();
+  });
+
+  dom.window.document.querySelector("[data-indicator-request-form]").dispatchEvent(
+    new dom.window.Event("submit", { bubbles: true, cancelable: true }),
+  );
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(requestOptions.method, "POST");
+  assert.equal(dom.window.document.querySelector("[data-indicator-request-status]").textContent, "PENDING");
 });

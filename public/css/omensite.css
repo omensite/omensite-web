@@ -434,21 +434,90 @@ button, input, textarea, select {
 .quicklink:hover { border-color: var(--c-green); color: var(--c-green); }
 .panel > a { text-decoration: none; }
 
-/* instructions block (indicators) */
-.howto { max-width: 560px; }
-.howto ol { margin: 0; padding-left: 0; list-style: none; counter-reset: step; }
-.howto li {
-  counter-increment: step;
-  font-size: 12px; color: var(--c-text-dim); line-height: 1.85;
+/* ============================================================
+   Indicators — manual TradingView access workflow
+   ============================================================ */
+.indicator-access-meta {
+  display: flex; flex-wrap: wrap; gap: 8px 28px;
+  margin-bottom: 20px; padding: 10px 0;
+  border-top: 1px solid var(--c-border-faint);
+  border-bottom: 1px solid var(--c-border-faint);
+  color: var(--c-text-mid); font-size: 10px; letter-spacing: 0.08em;
 }
-.howto li::before { content: "0" counter(step) ". "; color: var(--c-green); }
-.code-row { display: flex; gap: 8px; margin-top: 14px; }
-.code-field {
-  flex: 1; background: var(--c-input); border: 1px solid var(--c-border);
-  padding: 10px 12px; font-size: 12px; color: var(--c-text-faint);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.indicator-access-meta span { color: var(--c-text-faint); }
+.indicator-access-meta strong { color: var(--c-green); font-weight: 500; }
+
+.indicator-console {
+  border-top-width: 1px; border-top-style: solid; border-top-color: var(--c-border-soft);
+  border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: var(--c-border-soft);
+  container-type: inline-size;
 }
-.code-field.issued { color: var(--c-green); }
+.indicator-console-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+  padding: 16px 0; border-bottom: 1px solid var(--c-border-soft);
+}
+.indicator-console-head .section-label { margin-bottom: 5px; }
+.indicator-console-head p,
+.indicator-request > div > p {
+  max-width: 78ch; margin: 0;
+  color: var(--c-text-faint); font-size: 10px; letter-spacing: 0.05em; line-height: 1.6;
+}
+.indicator-request-state {
+  flex: none; padding: 6px 10px;
+  border: 1px solid currentColor;
+  color: var(--c-text-mid); font-size: 10px; letter-spacing: 0.1em;
+}
+.indicator-state-pending { color: var(--c-amber); }
+.indicator-state-granted { color: var(--c-green); }
+.indicator-state-denied { color: var(--c-red); }
+.indicator-state-not_requested { color: var(--c-text-mid); }
+
+.indicator-catalog-head,
+.indicator-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 88px 110px minmax(128px, 0.55fr);
+  gap: 14px; align-items: center;
+}
+.indicator-catalog-head {
+  padding: 8px 0;
+  color: var(--c-text-faint); font-size: 9px; letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--c-border-soft);
+}
+.indicator-catalog { margin: 0; padding: 0; list-style: none; }
+.indicator-catalog-row {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--c-border-faint);
+  color: var(--c-text-mid); font-size: 11px;
+}
+.indicator-catalog-row:last-child { border-bottom: 0; }
+.indicator-catalog-main { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.indicator-catalog-main strong { color: var(--c-text); font-size: 12px; font-weight: 500; }
+.indicator-catalog-main span { color: var(--c-text-mute); overflow-wrap: anywhere; }
+.indicator-catalog-row a { font-size: 10px; letter-spacing: 0.05em; }
+.indicator-catalog-empty {
+  padding: 34px 0; color: var(--c-text-faint); font-size: 11px; text-align: center;
+}
+
+.indicator-request {
+  display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.2fr);
+  gap: 28px; margin-top: 26px; padding: 18px 0;
+  border-top: 1px solid var(--c-border-soft);
+  border-bottom: 1px solid var(--c-border-soft);
+}
+.indicator-request form { display: grid; gap: 12px; }
+.indicator-field-help {
+  margin: -7px 0 0; color: var(--c-text-faint); font-size: 9px; letter-spacing: 0.06em;
+}
+.terminal-check {
+  display: flex; align-items: flex-start; gap: 9px;
+  color: var(--c-text-mid); font-size: 10px; letter-spacing: 0.06em; cursor: pointer;
+}
+.terminal-check input { margin: 2px 0 0; accent-color: var(--c-green); }
+.indicator-request-feedback {
+  grid-column: 2; min-height: 1.5em;
+  color: var(--c-green); font-size: 10px; letter-spacing: 0.06em;
+}
+.indicator-feedback-error { color: var(--c-red); }
 
 /* filter chips */
 .chips { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -656,6 +725,23 @@ button, input, textarea, select {
   .grid-4, .grid-3 { grid-template-columns: 1fr; }
   .jgrid3 { grid-template-columns: 1fr; }
   .route-xn-buffer { flex-direction: column; font-size: 16px; }
+  .indicator-request .btn { width: 100%; }
+}
+
+@container (max-width: 760px) {
+  .indicator-console-head { flex-direction: column; }
+  .indicator-catalog-head { display: none; }
+  .indicator-catalog-row { grid-template-columns: 1fr 1fr; gap: 9px 16px; }
+  .indicator-catalog-main { grid-column: 1 / -1; }
+  .indicator-catalog-row > [data-field]::before {
+    content: attr(data-field) " :: ";
+    color: var(--c-text-faint); font-size: 9px; letter-spacing: 0.08em;
+  }
+}
+
+@media (max-width: 760px) {
+  .indicator-request { grid-template-columns: 1fr; }
+  .indicator-request-feedback { grid-column: 1; }
 }
 
 @container (max-width: 820px) {
