@@ -1,5 +1,6 @@
 import { ROUTE_BY_KEY } from "../models/navigation.js";
 import { buildPageViewModel } from "../models/view-models.js";
+import { normalizeTradingViewUrl } from "../config/indicator-catalog.js";
 import { renderPage } from "./page-controller.js";
 
 const PUBLIC_ERRORS = Object.freeze({
@@ -21,6 +22,13 @@ function isStandardForm(req) {
   return Boolean(req.is?.("application/x-www-form-urlencoded"));
 }
 
+function catalogForRendering(catalog) {
+  return Object.freeze(catalog.map((indicator) => Object.freeze({
+    ...indicator,
+    tradingViewUrl: normalizeTradingViewUrl(indicator.tradingViewUrl),
+  })));
+}
+
 export function createIndicatorController({ indicatorAccessService }) {
   return {
     show(req, res) {
@@ -29,7 +37,7 @@ export function createIndicatorController({ indicatorAccessService }) {
       if (notice) delete req.session.indicatorNotice;
       return renderPage(req, res, buildPageViewModel(ROUTE_BY_KEY.indicators, {
         operator: req.session.operator,
-        data: { ...memberView, notice },
+        data: { ...memberView, catalog: catalogForRendering(memberView.catalog), notice },
       }));
     },
 

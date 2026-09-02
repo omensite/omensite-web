@@ -29,6 +29,42 @@ test("Discord mode starts with an empty immutable catalog", () => {
   assert.throws(() => { catalog.push({ id: "changed" }); }, TypeError);
 });
 
+test("configured catalogs reject links outside HTTPS TradingView hosts", () => {
+  const record = {
+    id: "private-one",
+    name: "PRIVATE ONE",
+    description: "Configured script",
+    version: "1.0.0",
+    active: true,
+    demo: false,
+  };
+
+  for (const tradingViewUrl of [
+    "javascript:alert(1)",
+    "https://example.com/script/private-one/",
+    "http://www.tradingview.com/script/private-one/",
+    "https://tradingview.com.example.com/script/private-one/",
+  ]) {
+    assert.throws(
+      () => createIndicatorCatalog({
+        authMode: "discord",
+        configuredIndicators: [{ ...record, tradingViewUrl }],
+      }),
+      { code: "INDICATOR_TRADINGVIEW_URL_INVALID" },
+    );
+  }
+
+  const catalog = createIndicatorCatalog({
+    authMode: "discord",
+    configuredIndicators: [{
+      ...record,
+      tradingViewUrl: "https://www.tradingview.com/script/private-one/",
+    }],
+  });
+  assert.equal(catalog[0].tradingViewUrl, "https://www.tradingview.com/script/private-one/");
+  assert.throws(() => { catalog[0].tradingViewUrl = "https://example.com"; }, TypeError);
+});
+
 test("request all validates consent and stores every active indicator", () => {
   const { service, catalog, operator } = createIndicatorHarness();
 

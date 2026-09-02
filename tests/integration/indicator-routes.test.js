@@ -100,6 +100,14 @@ test("TradingView links render only for granted requests with configured URLs", 
       id: "private-two", name: "PRIVATE TWO", description: "Configured without a URL",
       tradingViewUrl: null, version: "1.0.0", active: true, demo: false,
     }),
+    Object.freeze({
+      id: "unsafe-script", name: "UNSAFE SCRIPT", description: "Injected unsafe scheme",
+      tradingViewUrl: "javascript:alert(1)", version: "1.0.0", active: true, demo: false,
+    }),
+    Object.freeze({
+      id: "external-script", name: "EXTERNAL SCRIPT", description: "Injected unrelated host",
+      tradingViewUrl: "https://example.com/script/not-tradingview/", version: "1.0.0", active: true, demo: false,
+    }),
   ]);
   const app = createTestApp({
     demoRoles: ["OS", "Indicators"], indicatorRequestRepository, indicatorCatalog,
@@ -107,7 +115,7 @@ test("TradingView links render only for granted requests with configured URLs", 
   const agent = await loginDemo(app, { username: "omen" });
   indicatorRequestRepository.upsertPending({
     userId: "demo:omen", discordUsername: "omen", tradingViewUsername: "omen_tv",
-    indicatorIds: ["private-one", "private-two"],
+    indicatorIds: ["private-one", "private-two", "unsafe-script", "external-script"],
   });
 
   let response = await agent.get("/indicators").expect(200);
@@ -116,6 +124,8 @@ test("TradingView links render only for granted requests with configured URLs", 
   response = await agent.get("/indicators").expect(200);
   assert.match(response.text, /href="https:\/\/www\.tradingview\.com\/script\/example\/"/);
   assert.equal((response.text.match(/OPEN IN TRADINGVIEW/g) ?? []).length, 1);
+  assert.doesNotMatch(response.text, /href="javascript:/i);
+  assert.doesNotMatch(response.text, /href="https:\/\/example\.com/i);
 });
 
 test("unauthenticated indicator request API is rejected before request processing", async () => {
