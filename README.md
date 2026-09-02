@@ -28,10 +28,10 @@ This release establishes OMENSITE's application architecture and core user exper
 - A cinematic Matrix-inspired login sequence with animated terminal graphics.
 - Demonstration session authentication behind a replaceable authentication service.
 - A browser-local trade journal with create, list, detail, and shareable-view workflows.
-- Interface foundations for indicator, alert, and market-news features.
+- Interface foundations for indicator and alert features, plus a native live economic calendar with high/medium impact and market filters.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
-AI analysis, brokerage or execution-data imports, Discord SSO, PostgreSQL persistence, live market feeds, and editorial content pipelines are planned capabilities and are not connected in v0.1.0.
+AI analysis, brokerage or execution-data imports, Discord SSO, PostgreSQL persistence, and editorial content pipelines are planned capabilities and are not connected in v0.1.0.
 
 ## Technology
 
@@ -72,6 +72,14 @@ For automatic restarts during development:
 npm run dev
 ```
 
+### Live market calendar
+
+To enable the live market calendar, copy `.env.example` to `.env`, replace the sample value with your licensed Trading Economics API key, and restart the app.
+
+Missing or invalid credentials leave the terminal interface available with `[ CALENDAR DATA LINK OFFLINE ]`.
+
+Production operators must obtain Trading Economics display and distribution rights appropriate to their deployment.
+
 ## Demo access
 
 Authentication currently operates in demonstration mode. Any non-empty username and passkey are accepted, such as:
@@ -88,7 +96,7 @@ The authentication service is intentionally isolated so Discord OAuth can replac
 - `/login` — Authentication terminal
 - `/home` — Operations dashboard
 - `/indicators` — Indicator library foundation
-- `/market-news` — Market-intelligence foundation
+- `/market-news` — Live current-week high- and medium-impact economic calendar
 - `/alerts/ict` — ICT alert workspace
 - `/alerts/support-resistance` — Support and resistance alert workspace
 - `/journal` — Trade journal
@@ -110,7 +118,7 @@ npm test
 3. Trade-execution ingestion from supported brokers or structured imports.
 4. AI-assisted post-trade analysis and pattern detection.
 5. Production indicator, educational-content, and weekly market-intelligence libraries.
-6. Live market data and configurable alert providers.
+6. Future streaming updates and configurable alert providers.
 
 ## Production considerations
 
