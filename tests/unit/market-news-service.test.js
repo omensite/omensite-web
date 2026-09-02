@@ -56,6 +56,33 @@ test("service shares fresh results and force refresh bypasses the cache", async 
   assert.equal(calls, 2);
 });
 
+test("a later forced refresh keeps its result when an earlier refresh completes afterward", async () => {
+  let currentTime = new Date("2026-09-02T12:00:00.000Z");
+  const pending = [];
+  const provider = {
+    fetchWeek() {
+      return new Promise((resolve) => { pending.push(resolve); });
+    },
+  };
+  const service = createMarketNewsService({ provider, now: () => currentTime, cacheTtlMs: 1_000 });
+
+  const initial = service.getCurrentWeek();
+  pending[0]([{ CalendarId: "initial", Date: "2026-09-02T12:00:00", Country: "Japan", Event: "Initial", Importance: 3, Actual: null, Forecast: null, Previous: null }]);
+  await initial;
+
+  currentTime = new Date("2026-09-02T12:00:01.001Z");
+  const staleRefresh = service.getCurrentWeek();
+  const forcedRefresh = service.getCurrentWeek({ force: true });
+  pending[2]([{ CalendarId: "forced", Date: "2026-09-02T12:00:00", Country: "Japan", Event: "Forced", Importance: 3, Actual: null, Forecast: null, Previous: null }]);
+  await forcedRefresh;
+  pending[1]([{ CalendarId: "stale", Date: "2026-09-02T12:00:00", Country: "Japan", Event: "Stale", Importance: 3, Actual: null, Forecast: null, Previous: null }]);
+  await staleRefresh;
+
+  const latest = await service.getCurrentWeek();
+
+  assert.equal(latest.events[0].id, "forced");
+});
+
 test("service returns the last successful week as stale when revalidation fails", async () => {
   let fail = false;
   const provider = {

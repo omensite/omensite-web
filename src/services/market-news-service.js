@@ -55,8 +55,10 @@ export function getCalendarWeekRange(date) {
 export function createMarketNewsService({ provider, now = () => new Date(), cacheTtlMs = 60_000 }) {
   let cache = null;
   let inFlight = null;
+  let requestGeneration = 0;
+  const latestGenerationByKey = new Map();
 
-  async function load(range) {
+  async function load(range, key, generation) {
     const rows = await provider.fetchWeek(range);
     const events = rows.map(normalizeEvent).filter(Boolean)
       .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
@@ -66,7 +68,9 @@ export function createMarketNewsService({ provider, now = () => new Date(), cach
       updatedAt: now().toISOString(),
       range,
     };
-    cache = { key: `${range.from}:${range.to}`, savedAt: now().valueOf(), result };
+    if (latestGenerationByKey.get(key) === generation) {
+      cache = { key, savedAt: now().valueOf(), result };
+    }
     return result;
   }
 
@@ -78,11 +82,14 @@ export function createMarketNewsService({ provider, now = () => new Date(), cach
       if (!force && fresh) return cache.result;
       if (!force && inFlight?.key === key) return inFlight.promise;
 
-      const promise = load(range).catch((error) => {
+      const generation = ++requestGeneration;
+      latestGenerationByKey.set(key, generation);
+      const promise = load(range, key, generation).catch((error) => {
         if (cache?.key === key) return { ...cache.result, state: "stale" };
         throw error;
       }).finally(() => {
         if (inFlight?.promise === promise) inFlight = null;
+        if (latestGenerationByKey.get(key) === generation) latestGenerationByKey.delete(key);
       });
       inFlight = { key, promise };
       return promise;
