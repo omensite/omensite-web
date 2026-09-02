@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import session from "express-session";
 import request from "supertest";
+import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
 import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
 const discordOperator = {
@@ -35,6 +36,29 @@ test("demo login establishes, registers, and CSRF-protects the operator session"
   assert.equal(unregistered.length, 1);
   assert.deepEqual(unregistered[0], registered[0]);
   await agent.get("/home").expect(302).expect("Location", "/login");
+});
+
+test("same-browser re-login replaces the prior identity session registry mapping", async () => {
+  const sessionRegistry = createInMemorySessionRegistry();
+  const app = createTestApp({ sessionRegistry });
+  const agent = request.agent(app);
+
+  const firstLogin = await agent.post("/auth/login")
+    .send({ username: "first", passkey: "preview" })
+    .expect(200);
+  const firstCookie = firstLogin.headers["set-cookie"][0].split(";", 1)[0];
+  assert.equal(sessionRegistry.activeCount("demo:first"), 1);
+
+  const secondLogin = await agent.post("/auth/login")
+    .send({ username: "second", passkey: "preview" })
+    .expect(200);
+  const secondCookie = secondLogin.headers["set-cookie"][0].split(";", 1)[0];
+
+  assert.notEqual(secondCookie, firstCookie);
+  assert.equal(sessionRegistry.activeCount("demo:first"), 0);
+  assert.deepEqual(sessionRegistry.listSessionIds("demo:first"), []);
+  assert.equal(sessionRegistry.activeCount("demo:second"), 1);
+  assert.equal(sessionRegistry.listSessionIds("demo:second").length, 1);
 });
 
 test("fragment requests receive 401 instead of a redirect", async () => {

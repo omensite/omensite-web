@@ -20,7 +20,12 @@ function saveSession(req) {
 
 export function createAuthController({ authService, sessionRegistry }) {
   async function establishOperator(req, operator, { complete = false } = {}) {
+    const previousOperator = req.session.operator;
+    const previousSessionId = req.sessionID;
     await regenerateSession(req);
+    if (previousOperator?.id) {
+      sessionRegistry.unregister(previousOperator.id, previousSessionId);
+    }
     req.session.operator = operator;
     req.session.authComplete = complete;
     ensureCsrfToken(req);
