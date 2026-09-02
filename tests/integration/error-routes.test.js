@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
+import { createDiscordAuthConfig } from "../helpers/auth-test-helpers.js";
 
 async function authenticatedAgent(app) {
   const agent = request.agent(app);
@@ -30,6 +31,7 @@ test("production server errors omit stack traces", async () => {
   try {
     const app = createApp({
       sessionSecret: "test-secret",
+      authConfig: createDiscordAuthConfig(),
       sessionStore: new (await import("express-session")).default.MemoryStore(),
       configureRoutes(instance) { instance.get("/explode", () => { throw new Error("sensitive database detail"); }); },
       logger: { error() {} },

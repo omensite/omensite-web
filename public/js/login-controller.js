@@ -5,10 +5,10 @@ import { startSphereRenderer } from "./sphere-renderer.js";
 const CREDENTIAL_ERROR = "> ERR :: CREDENTIALS REQUIRED — USER AND PASSKEY";
 const REQUEST_ERROR = "> ERR :: LOGIN REQUEST FAILED — RETRY";
 
-function replaceFormWithStream({ documentRef, form, root, reducedMotion, redirectTo, windowRef, stopSphere }) {
+function replaceEntryWithStream({ documentRef, entry, root, reducedMotion, redirectTo, windowRef, stopSphere }) {
   const stream = documentRef.createElement("div");
   stream.className = "auth-stream";
-  form.replaceWith(stream);
+  entry.replaceWith(stream);
   let stopMatrix = () => {};
 
   return runLoginSequence({
@@ -58,14 +58,15 @@ export function initializeLoginController({
   fetchImpl = window.fetch.bind(window),
 } = {}) {
   const form = documentRef.querySelector("[data-login-form]");
-  if (!form) return null;
+  const completion = documentRef.querySelector("[data-auth-complete]");
+  if (!form && !completion) return null;
 
   const root = documentRef.querySelector("[data-login-root]");
-  const card = form.closest(".login-card");
-  const error = form.querySelector("[data-login-error]");
-  const submit = form.querySelector("[data-login-submit]");
-  const user = form.querySelector("[data-login-user]");
-  const passkey = form.querySelector("[data-login-passkey]");
+  const card = form?.closest(".login-card");
+  const error = form?.querySelector("[data-login-error]");
+  const submit = form?.querySelector("[data-login-submit]");
+  const user = form?.querySelector("[data-login-user]");
+  const passkey = form?.querySelector("[data-login-passkey]");
   const reducedMotion = Boolean(windowRef.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   let stopSphere = startSphereRenderer({ documentRef, windowRef, reducedMotion });
   const stopLoginSphere = () => {
@@ -103,7 +104,7 @@ export function initializeLoginController({
       }
       const result = await response.json();
       if (!response.ok || !result.ok || typeof result.redirectTo !== "string") throw new Error("Login request failed");
-      await replaceFormWithStream({ documentRef, form, root, reducedMotion, redirectTo: result.redirectTo, windowRef, stopSphere: stopLoginSphere });
+      await replaceEntryWithStream({ documentRef, entry: form, root, reducedMotion, redirectTo: result.redirectTo, windowRef, stopSphere: stopLoginSphere });
     } catch {
       showError(REQUEST_ERROR);
     } finally {
@@ -114,13 +115,24 @@ export function initializeLoginController({
     }
   };
 
-  form.addEventListener("submit", onSubmit);
+  form?.addEventListener("submit", onSubmit);
+  if (completion) {
+    void replaceEntryWithStream({
+      documentRef,
+      entry: completion,
+      root,
+      reducedMotion,
+      redirectTo: completion.dataset.redirectTo || "/home",
+      windowRef,
+      stopSphere: stopLoginSphere,
+    });
+  }
   return {
     dispose() {
-      form.removeEventListener("submit", onSubmit);
+      form?.removeEventListener("submit", onSubmit);
       stopLoginSphere();
     },
   };
 }
 
-if (typeof document !== "undefined" && document.querySelector("[data-login-form]")) initializeLoginController();
+if (typeof document !== "undefined" && document.querySelector("[data-login-root]")) initializeLoginController();

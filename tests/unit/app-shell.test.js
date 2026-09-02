@@ -112,3 +112,28 @@ test("navigating away from Market News clears its scheduled refresh", async (t) 
   assert.ok(refreshInterval);
   assert.equal(cleared.includes(refreshInterval.id), true);
 });
+
+test("logout sends the authenticated page CSRF token", async (t) => {
+  const dom = new JSDOM(`
+    <meta name="csrf-token" content="csrf-from-session">
+    <div data-shell-body><button data-logout></button><main data-main>${homeFragment}</main></div>
+  `, { url: "http://localhost/home" });
+  dom.window.matchMedia = () => ({ matches: true });
+  let requestOptions;
+  const instance = initializeAppShell({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return new Response(JSON.stringify({ ok: false }), { status: 403, headers: { "Content-Type": "application/json" } });
+    },
+  });
+  t.after(() => {
+    instance.dispose();
+    dom.window.close();
+  });
+
+  dom.window.document.querySelector("[data-logout]").click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+  assert.equal(requestOptions.headers["X-CSRF-Token"], "csrf-from-session");
+});

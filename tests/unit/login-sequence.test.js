@@ -79,3 +79,26 @@ test("reduced-motion grant replaces the login card with the granted screen", asy
     dom.window.close();
   }
 });
+
+test("Discord completion marker starts the same grant sequence without a demo form", async () => {
+  const dom = new JSDOM(`
+    <section data-login-root>
+      <div class="login-card"><div data-auth-complete data-redirect-to="#discord-granted"></div></div>
+    </section>
+  `, { url: "http://localhost/auth/complete" });
+  dom.window.matchMedia = () => ({ matches: true });
+  const controller = initializeLoginController({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async () => { throw new Error("completion must not submit"); },
+  });
+
+  try {
+    await new Promise((resolve) => dom.window.setTimeout(resolve, 1400));
+    assert.ok(dom.window.document.querySelector(".auth-granted"));
+    assert.equal(dom.window.document.querySelector(".login-card"), null);
+  } finally {
+    controller.dispose();
+    dom.window.close();
+  }
+});

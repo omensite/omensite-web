@@ -1,16 +1,39 @@
-export function createAuthController({ authService }) {
+import { ensureCsrfToken } from "../security/csrf.js";
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => error ? reject(error) : resolve());
+  });
+}
+
+function destroySession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.destroy((error) => error ? reject(error) : resolve());
+  });
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => error ? reject(error) : resolve());
+  });
+}
+
+export function createAuthController({ authService, sessionRegistry }) {
+  async function establishOperator(req, operator, { complete = false } = {}) {
+    await regenerateSession(req);
+    req.session.operator = operator;
+    req.session.authComplete = complete;
+    ensureCsrfToken(req);
+    sessionRegistry.register(operator.id, req.sessionID);
+  }
+
   return {
     async login(req, res, next) {
       try {
-        const operator = await authService.authenticate(req.body ?? {});
-        req.session.regenerate((error) => {
-          if (error) {
-            return next(error);
-          }
-
-          req.session.operator = operator;
-          return res.json({ ok: true, redirectTo: "/home" });
-        });
+        const authenticate = authService.authenticateDemo ?? authService.authenticate;
+        const operator = await authenticate(req.body ?? {});
+        await establishOperator(req, operator);
+        return res.json({ ok: true, redirectTo: "/home" });
       } catch (error) {
         if (error.code === "CREDENTIALS_REQUIRED") {
           return res.status(400).json({ error: error.code });
@@ -19,13 +42,63 @@ export function createAuthController({ authService }) {
       }
     },
 
-    logout(req, res, next) {
-      req.session.destroy((error) => {
-        if (error) {
-          return next(error);
+    beginDiscord(req, res, next) {
+      try {
+        const { state, authorizationUrl } = authService.beginDiscord();
+        req.session.oauthState = state;
+        return res.redirect(authorizationUrl);
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    async completeDiscord(req, res) {
+      const expectedState = req.session.oauthState;
+      delete req.session.oauthState;
+      if (expectedState) await saveSession(req);
+      const suppliedState = typeof req.query.state === "string" ? req.query.state : "";
+      if (!expectedState || suppliedState !== expectedState) {
+        return res.redirect("/login?error=invalid_oauth_state");
+      }
+
+      const code = typeof req.query.code === "string" ? req.query.code : "";
+      if (!code) return res.redirect("/login?error=discord_auth_failed");
+
+      try {
+        const operator = await authService.completeDiscord({ code });
+        await establishOperator(req, operator, { complete: true });
+        return res.redirect("/auth/complete");
+      } catch {
+        return res.redirect("/login?error=discord_auth_failed");
+      }
+    },
+
+    showComplete(req, res) {
+      if (!req.session.operator) return res.redirect("/login");
+      if (!req.session.authComplete) return res.redirect("/home");
+      delete req.session.authComplete;
+      return res.render("layouts/login", { authMode: "discord", complete: true });
+    },
+
+    async logout(req, res, next) {
+      const operator = req.session.operator;
+      const sessionId = req.sessionID;
+      try {
+        try {
+          if (operator?.id) sessionRegistry.unregister(operator.id, sessionId);
+        } catch {
+          // Session destruction remains authoritative if registry bookkeeping fails.
         }
+        try {
+          await authService.revokeOperatorToken?.(operator);
+        } catch {
+          // Local logout must not depend on provider availability.
+        }
+        await destroySession(req);
         return res.json({ ok: true, redirectTo: "/login" });
-      });
+      } catch (error) {
+        return next(error);
+      }
     },
   };
 }

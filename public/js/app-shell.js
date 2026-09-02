@@ -88,6 +88,7 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
     showToast: (message) => showTerminalToast(documentRef, message),
   });
   const logoutButton = documentRef.querySelector("[data-logout]");
+  const csrfToken = documentRef.querySelector('meta[name="csrf-token"]')?.content ?? "";
   let loggingOut = false;
   const logout = async () => {
     if (loggingOut) return;
@@ -96,7 +97,7 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
     try {
       const response = await fetchImpl("/auth/logout", {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
       });
       const result = await response.json();
       if (!response.ok || !result.ok || typeof result.redirectTo !== "string") throw new Error("Logout request failed");

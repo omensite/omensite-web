@@ -31,18 +31,25 @@
 | |_| | |  | || |___ | |\ | ___) | | |   | |  | |___
 \___/|_|  |_||_____||_| \_||____/  |_|   |_|  |_____|</pre>
           <div class="login-sub">OMENSITE TRADING TERMINAL v0.1.1 :: RESTRICTED ACCESS</div>
-          <form class="login-form" action="/auth/login" method="post" novalidate data-login-form>
-            <div class="login-prompt">&gt; identify yourself to continue</div>
-            <label class="field">USER
-              <input name="username" type="text" placeholder="operator_id" autocomplete="off" spellcheck="false" required data-login-user>
-            </label>
-            <label class="field">PASSKEY
-              <input name="passkey" type="password" placeholder="••••••••" autocomplete="off" required data-login-passkey>
-            </label>
-            <div class="login-err" hidden data-login-error></div>
-            <button class="btn btn-primary btn-login" type="submit" data-login-submit>[ LOGIN ]</button>
-            <div class="login-fineprint">SESSION WILL BE ENCRYPTED. UNAUTHORIZED ACCESS IS LOGGED.</div>
-          </form>
+          <% if (complete) { %>
+            <div data-auth-complete data-redirect-to="/home"></div>
+          <% } else if (authMode === "discord") { %>
+            <div class="login-prompt">&gt; authenticate with the authorized Discord server</div>
+            <a class="btn btn-primary btn-login" href="/auth/discord" data-discord-login>[ CONTINUE WITH DISCORD ]</a>
+          <% } else { %>
+            <form class="login-form" action="/auth/login" method="post" novalidate data-login-form>
+              <div class="login-prompt">&gt; identify yourself to continue</div>
+              <label class="field">USER
+                <input name="username" type="text" placeholder="operator_id" autocomplete="off" spellcheck="false" required data-login-user>
+              </label>
+              <label class="field">PASSKEY
+                <input name="passkey" type="password" placeholder="••••••••" autocomplete="off" required data-login-passkey>
+              </label>
+              <div class="login-err" hidden data-login-error></div>
+              <button class="btn btn-primary btn-login" type="submit" data-login-submit>[ LOGIN ]</button>
+              <div class="login-fineprint">SESSION WILL BE ENCRYPTED. UNAUTHORIZED ACCESS IS LOGGED.</div>
+            </form>
+          <% } %>
         </div>
       </section>
     </main>
