@@ -59,3 +59,27 @@ test("Indicators retain open terminal-list geometry instead of nested card styli
   assert.equal(formStyle.display, "grid");
   dom.window.close();
 });
+
+test("Admin uses open terminal rails with dense action rows and mobile field labels", async () => {
+  const app = createApp({ sessionSecret: "test-secret" });
+  const agent = request.agent(app);
+  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const [response, stylesheet] = await Promise.all([
+    agent.get("/admin").expect(200),
+    request(app).get("/css/omensite.css").expect(200),
+  ]);
+  const dom = new JSDOM(response.text);
+  const style = dom.window.document.createElement("style");
+  style.textContent = stylesheet.text;
+  dom.window.document.head.append(style);
+
+  const userRow = dom.window.document.querySelector("[data-admin-user-row]");
+  const rail = dom.window.document.querySelector("[data-admin-users]");
+  const actions = userRow.querySelector(".admin-actions");
+  assert.equal(dom.window.getComputedStyle(userRow).display, "grid");
+  assert.equal(dom.window.getComputedStyle(rail).borderTopWidth, "1px");
+  assert.equal(dom.window.getComputedStyle(actions).display, "flex");
+  assert.equal(userRow.closest(".panel"), null);
+  assert.ok([...userRow.children].every((child) => child.hasAttribute("data-field")));
+  dom.window.close();
+});

@@ -8,6 +8,7 @@ import { createInMemoryIndicatorRequestRepository } from "./repositories/in-memo
 import { createInMemorySessionRegistry } from "./repositories/in-memory-session-registry.js";
 import { createInMemoryUserRepository } from "./repositories/in-memory-user-repository.js";
 import { createAuthService } from "./services/auth-service.js";
+import { createAdminService } from "./services/admin-service.js";
 import { createIndicatorAccessService } from "./services/indicator-access-service.js";
 import { createRolePolicy } from "./services/role-policy.js";
 import { createIndicatorCatalog } from "./config/indicator-catalog.js";
@@ -16,6 +17,7 @@ import { requireAuth } from "./middleware/require-auth.js";
 import { createRefreshRoles } from "./middleware/refresh-roles.js";
 import { fragmentRequest } from "./middleware/fragment-request.js";
 import { createAuthRoutes } from "./routes/auth-routes.js";
+import { createAdminRoutes } from "./routes/admin-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
 import { createJournalRoutes } from "./routes/journal-routes.js";
 import { createIndicatorRoutes } from "./routes/indicator-routes.js";
@@ -38,6 +40,7 @@ export function createApp({
   indicatorRequestRepository = createInMemoryIndicatorRequestRepository(),
   indicatorCatalog,
   indicatorAccessService,
+  adminService,
   marketNewsService = createMarketNewsService({
     provider: createEconomiciumCalendarProvider(),
   }),
@@ -85,6 +88,14 @@ export function createApp({
     catalog: resolvedIndicatorCatalog,
     requestRepository: indicatorRequestRepository,
   });
+  const resolvedAdminService = adminService ?? createAdminService({
+    userRepository,
+    banRepository,
+    sessionRegistry,
+    requestRepository: indicatorRequestRepository,
+    sessionStore: resolvedSessionStore,
+    catalog: resolvedIndicatorCatalog,
+  });
 
   const app = express();
   app.locals.authConfig = resolvedAuthConfig;
@@ -95,6 +106,7 @@ export function createApp({
   app.locals.sessionStore = resolvedSessionStore;
   app.locals.indicatorCatalog = resolvedIndicatorCatalog;
   app.locals.indicatorRequestRepository = indicatorRequestRepository;
+  app.locals.adminService = resolvedAdminService;
   app.set("trust proxy", trustProxy ?? (environment === "production" ? 1 : false));
   app.set("view engine", "ejs");
   app.set("views", path.join(sourceDirectory, "..", "views"));
@@ -125,6 +137,7 @@ export function createApp({
   app.use("/auth", createAuthRoutes({ authConfig: resolvedAuthConfig, authService: resolvedAuthService, sessionRegistry }));
   configureRoutes?.(app);
   app.use(requireAuth, refreshRoles);
+  app.use(createAdminRoutes({ adminService: resolvedAdminService }));
   app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));
   app.use(createJournalRoutes());

@@ -1,0 +1,116 @@
+import { ROUTE_BY_KEY } from "../models/navigation.js";
+import { buildPageViewModel } from "../models/view-models.js";
+import { renderPage } from "./page-controller.js";
+
+const PUBLIC_ERRORS = Object.freeze({
+  SELF_BAN_FORBIDDEN: Object.freeze({
+    status: 409,
+    message: "SELF BAN BLOCKED :: USE SIGN OUT",
+  }),
+  SESSION_INVALIDATION_FAILED: Object.freeze({
+    status: 503,
+    message: "SESSION CONTROL PARTIALLY FAILED :: REVIEW ACTIVE SESSIONS",
+  }),
+  BAN_NOT_FOUND: Object.freeze({
+    status: 404,
+    message: "BAN RECORD NOT FOUND",
+  }),
+  INDICATOR_REQUEST_NOT_FOUND: Object.freeze({
+    status: 404,
+    message: "INDICATOR REQUEST NOT FOUND",
+  }),
+  INVALID_DECISION: Object.freeze({
+    status: 422,
+    message: "INDICATOR DECISION MUST BE GRANTED OR DENIED",
+  }),
+});
+
+function isStandardForm(req) {
+  return Boolean(req.is?.("application/x-www-form-urlencoded"));
+}
+
+function findUser(adminService, userId) {
+  return adminService.getDashboard().users.find((user) => user.id === String(userId)) ?? {
+    id: String(userId),
+  };
+}
+
+function handleError(error, res, next) {
+  const publicError = PUBLIC_ERRORS[error.code];
+  if (!publicError) return next(error);
+  return res.status(publicError.status).json({
+    ok: false,
+    error: error.code,
+    message: publicError.message,
+  });
+}
+
+export function createAdminController({ adminService }) {
+  return {
+    show(req, res) {
+      return renderPage(req, res, buildPageViewModel(ROUTE_BY_KEY.admin, {
+        operator: req.session.operator,
+        data: adminService.getDashboard(),
+      }));
+    },
+
+    async signOutUser(req, res, next) {
+      const userId = req.params.id;
+      const actorId = req.session.operator.id;
+      try {
+        await adminService.signOutUser({ userId, actorId });
+        if (isStandardForm(req)) return res.redirect(303, "/admin");
+        const selfSignedOut = String(userId) === String(actorId);
+        return res.json({
+          ok: true,
+          user: findUser(adminService, userId),
+          selfSignedOut,
+          ...(selfSignedOut ? { redirectTo: "/login" } : {}),
+        });
+      } catch (error) {
+        return handleError(error, res, next);
+      }
+    },
+
+    async banUser(req, res, next) {
+      const userId = req.params.id;
+      const actorId = req.session.operator.id;
+      try {
+        await adminService.banUser({ userId, actorId, reason: req.body?.reason ?? "" });
+        if (isStandardForm(req)) return res.redirect(303, "/admin");
+        return res.json({
+          ok: true,
+          user: findUser(adminService, userId),
+          selfSignedOut: false,
+        });
+      } catch (error) {
+        return handleError(error, res, next);
+      }
+    },
+
+    async unbanUser(req, res, next) {
+      const userId = req.params.id;
+      try {
+        await adminService.unbanUser({ userId, actorId: req.session.operator.id });
+        if (isStandardForm(req)) return res.redirect(303, "/admin");
+        return res.json({ ok: true, user: findUser(adminService, userId), selfSignedOut: false });
+      } catch (error) {
+        return handleError(error, res, next);
+      }
+    },
+
+    async decideIndicatorRequest(req, res, next) {
+      try {
+        const request = adminService.decideIndicatorRequest({
+          userId: req.params.userId,
+          actorId: req.session.operator.id,
+          status: req.body?.status,
+        });
+        if (isStandardForm(req)) return res.redirect(303, "/admin");
+        return res.json({ ok: true, request });
+      } catch (error) {
+        return handleError(error, res, next);
+      }
+    },
+  };
+}

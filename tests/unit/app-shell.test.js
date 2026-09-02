@@ -33,6 +33,18 @@ const indicatorFragment = `
     <output data-indicator-request-feedback></output>
   </section>`;
 
+const adminFragment = `
+  <section data-route-view data-route-key="admin" data-admin-root data-current-user-id="7" aria-busy="false">
+    <ol data-admin-users>
+      <li data-admin-user-row data-user-id="42" data-user-banned="false" data-active-sessions="1">
+        <output data-admin-ban-state>ALLOWED</output><strong data-admin-session-count>1</strong>
+        <form><input name="_csrf" value="csrf-token"><button type="submit" data-admin-action="sign-out"
+          data-admin-action-endpoint="/api/admin/users/42/sign-out" data-admin-confirm="SIGN OUT?">SIGN OUT</button></form>
+      </li>
+    </ol>
+    <output data-admin-feedback></output>
+  </section>`;
+
 test("home journal count hydrates from legacy local entries after full and fragment renders", async () => {
   const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, {
     url: "http://localhost/home",
@@ -179,4 +191,33 @@ test("Indicators routes are progressively enhanced by the app shell", async (t) 
 
   assert.equal(requestOptions.method, "POST");
   assert.equal(dom.window.document.querySelector("[data-indicator-request-status]").textContent, "PENDING");
+});
+
+test("Admin routes are progressively enhanced by the app shell", async (t) => {
+  const dom = new JSDOM(`<div data-shell-body><main data-main>${adminFragment}</main></div>`, {
+    url: "http://localhost/admin",
+  });
+  dom.window.matchMedia = () => ({ matches: true });
+  dom.window.confirm = () => true;
+  let requestOptions;
+  const instance = initializeAppShell({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async (_url, options) => {
+      requestOptions = options;
+      return new Response(JSON.stringify({
+        ok: true, user: { id: "42", banned: false, activeSessions: 0 }, selfSignedOut: false,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    },
+  });
+  t.after(() => {
+    instance.dispose();
+    dom.window.close();
+  });
+
+  dom.window.document.querySelector('[data-admin-action="sign-out"]').click();
+  await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
+
+  assert.equal(requestOptions.method, "POST");
+  assert.equal(dom.window.document.querySelector("[data-admin-session-count]").textContent, "0");
 });

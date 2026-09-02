@@ -1,10 +1,108 @@
-<section class="route" data-route-view data-route-key="<%= page.route.key %>">
+<section class="route admin-console" data-route-view data-route-key="<%= page.route.key %>"
+  data-admin-root data-current-user-id="<%= page.operator.id %>" aria-busy="false">
   <%- include("../partials/route-head", { page }) %>
-  <section class="panel" data-admin-placeholder>
-    <div class="panel-kicker">&gt; ADMIN CONTROL PLANE</div>
-    <div class="empty">
-      <span class="blip">[ AUTHORIZATION VERIFIED ]</span><br>
-      <span>TEMPORARY MEMORY CONTROLS :: INITIALIZING IN NEXT MODULE</span>
+
+  <div class="admin-memory-warning" role="status">
+    <span class="blip">[ TEMPORARY MEMORY MODE ]</span>
+    <span>USERS, BANS, SESSIONS, AND REQUEST DECISIONS RESET WHEN THIS PROCESS RESTARTS.</span>
+  </div>
+
+  <section class="admin-rail" aria-labelledby="admin-users-heading" data-admin-users>
+    <div class="admin-rail-head">
+      <h2 id="admin-users-heading" class="section-label">&gt; USER MANAGEMENT</h2>
+      <span><%= page.data.users.length %> IDENTITIES SEEN</span>
     </div>
+    <div class="admin-user-head" aria-hidden="true">
+      <span>IDENTITY</span><span>ACCESS</span><span>SESSION STATE</span><span>ACTIONS</span>
+    </div>
+    <ol class="admin-records">
+      <% for (const user of page.data.users) { const isSelf = user.id === page.operator.id; %>
+        <li class="admin-user-row" data-admin-user-row data-user-id="<%= user.id %>"
+          data-user-banned="<%= user.banned %>" data-active-sessions="<%= user.activeSessions %>"
+          data-admin-ban-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/ban"
+          data-admin-unban-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban">
+          <div class="admin-user-identity" data-field="IDENTITY">
+            <strong><%= user.displayName || user.username %></strong>
+            <span>@<%= user.username %> :: <%= user.id %></span>
+            <span>AUTH :: <%= user.authMode.toUpperCase() %></span>
+          </div>
+          <div class="admin-access-list" data-field="ACCESS">
+            <span>ROLES :: <strong><%= user.roles.length ? user.roles.join(" / ") : "NONE" %></strong></span>
+            <span>CAPS :: <strong><%= user.capabilities.length ? user.capabilities.join(" / ") : "NONE" %></strong></span>
+            <% if (user.rolesSyncedAt) { %><span>SYNC :: <time datetime="<%= user.rolesSyncedAt %>"><%= user.rolesSyncedAt %></time></span><% } %>
+            <% if (user.lastSeenAt) { %><span>SEEN :: <time datetime="<%= user.lastSeenAt %>"><%= user.lastSeenAt %></time></span><% } %>
+          </div>
+          <div class="admin-session-state" data-field="SESSION STATE">
+            <output data-admin-ban-state class="<%= user.banned ? "admin-state-danger" : "admin-state-ok" %>"><%= user.banned ? "BANNED" : "ALLOWED" %></output>
+            <span>ACTIVE SESSIONS :: <strong data-admin-session-count><%= user.activeSessions %></strong></span>
+            <% if (user.ban) { %>
+              <span data-admin-ban-detail>BY <%= user.ban.actorId %> :: <time datetime="<%= user.ban.bannedAt %>"><%= user.ban.bannedAt %></time></span>
+            <% } %>
+          </div>
+          <div class="admin-actions" data-field="ACTIONS">
+            <form action="/api/admin/users/<%= encodeURIComponent(user.id) %>/sign-out" method="post">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button class="btn" type="submit" data-admin-action="sign-out"
+                data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/sign-out"
+                data-admin-confirm="SIGN OUT ALL SESSIONS FOR <%= user.username %>?">[ SIGN OUT ]</button>
+            </form>
+            <% if (user.banned) { %>
+              <form action="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban" method="post">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="btn" type="submit" data-admin-action="unban"
+                  data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban"
+                  data-admin-confirm="RESTORE SITE ACCESS FOR <%= user.username %>?">[ UNBAN ]</button>
+              </form>
+            <% } else { %>
+              <form action="/api/admin/users/<%= encodeURIComponent(user.id) %>/ban" method="post">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="reason" value="Administrative action">
+                <button class="btn btn-danger" type="submit" data-admin-action="ban"
+                  data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/ban"
+                  data-admin-confirm="BAN <%= user.username %> AND TERMINATE ALL SESSIONS?" <%= isSelf ? "disabled" : "" %>>[ BAN ]</button>
+              </form>
+            <% } %>
+          </div>
+        </li>
+      <% } %>
+    </ol>
   </section>
+
+  <section class="admin-rail" aria-labelledby="admin-requests-heading" data-admin-requests>
+    <div class="admin-rail-head">
+      <h2 id="admin-requests-heading" class="section-label">&gt; INDICATOR ACCESS REQUESTS</h2>
+      <span>MANUAL TRADINGVIEW WORKFLOW</span>
+    </div>
+    <div class="admin-request-head" aria-hidden="true">
+      <span>MEMBER</span><span>REQUEST</span><span>STATE</span><span>DECISION</span>
+    </div>
+    <ol class="admin-records">
+      <% for (const request of page.data.requests) { %>
+        <li class="admin-request-row" data-admin-request-row data-user-id="<%= request.userId %>"
+          data-request-status="<%= request.status %>">
+          <div data-field="MEMBER"><strong>@<%= request.discordUsername %></strong><span><%= request.userId %></span></div>
+          <div data-field="REQUEST">
+            <span>TV :: <strong><%= request.tradingViewUsername %></strong></span>
+            <span><%= request.indicatorNames.join(" / ") %></span>
+            <time datetime="<%= request.requestedAt %>"><%= request.requestedAt %></time>
+          </div>
+          <output class="admin-request-state indicator-state-<%= request.status.toLowerCase() %>" data-field="STATE" data-admin-request-status><%= request.status %></output>
+          <div class="admin-actions" data-field="DECISION">
+            <% for (const status of ["GRANTED", "DENIED"]) { %>
+              <form action="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision" method="post">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="status" value="<%= status %>">
+                <button class="btn <%= status === "DENIED" ? "btn-danger" : "" %>" type="submit"
+                  data-admin-action="decision" data-admin-decision="<%= status %>"
+                  data-admin-action-endpoint="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision"
+                  data-admin-confirm="MARK THIS REQUEST <%= status %>?">[ <%= status %> ]</button>
+              </form>
+            <% } %>
+          </div>
+        </li>
+      <% } %>
+    </ol>
+  </section>
+
+  <output class="admin-feedback" data-admin-feedback aria-live="polite"></output>
 </section>

@@ -1,6 +1,7 @@
 import { createNavigationController } from "./navigation-controller.js";
 import { initializeJournalPage } from "./journal/journal-page-controller.js";
 import { initializeIndicatorAccessPage } from "./indicators/indicator-access-controller.js";
+import { initializeAdminPage } from "./admin/admin-controller.js";
 import { LocalStorageJournalRepository } from "./journal/local-storage-journal-repository.js";
 import { createJournalService } from "./journal/journal-service.js";
 import { initializeMarketNewsPage } from "./market-news/market-news-controller.js";
@@ -81,6 +82,13 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
       disposeActiveRoute = initializeIndicatorAccessPage(root, {
         fetchImpl,
         showToast: (message) => showTerminalToast(documentRef, message),
+      }).dispose;
+    }
+    if (route.key === "admin") {
+      disposeActiveRoute = initializeAdminPage(root, {
+        fetchImpl,
+        showToast: (message) => showTerminalToast(documentRef, message),
+        windowRef,
       }).dispose;
     }
     initializePageInteractions(root, { showToast: (message) => showTerminalToast(documentRef, message) });
