@@ -29,10 +29,19 @@ if not exist "node_modules\" (
   )
 )
 
-if not defined HOST set "HOST=127.0.0.1"
-if not defined PORT set "PORT=4173"
+set "omensiteHost=%HOST%"
+set "omensitePort=%PORT%"
+if not defined omensiteHost set "omensiteHost=127.0.0.1"
+if not defined omensitePort set "omensitePort=4173"
 
-echo [OMENSITE] Starting the MVC app at http://%HOST%:%PORT%
+echo [OMENSITE] Starting the MVC app at http://%omensiteHost%:%omensitePort%
+echo [OMENSITE] Authentication configuration: npm start loads .env when present.
+if defined OMENSITE_SKIP_BROWSER (
+  echo [OMENSITE] Browser launch skipped.
+) else (
+  echo [OMENSITE] Opening the local site in your default browser...
+  start "" "http://%omensiteHost%:%omensitePort%"
+)
 echo [OMENSITE] Press Ctrl+C to stop the server.
 call npm start
 set "exitCode=%errorlevel%"

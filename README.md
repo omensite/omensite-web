@@ -26,12 +26,14 @@ This release establishes OMENSITE's application architecture and core user exper
 - Clean, refreshable routes with progressive fragment navigation.
 - Seamless terminal-style page transitions and glitch effects.
 - A cinematic Matrix-inspired login sequence with animated terminal graphics.
-- Demonstration session authentication behind a replaceable authentication service.
+- Mode-aware demonstration and Discord OAuth2 authentication with server-enforced, role-based module access.
+- A temporary-memory Admin panel for user sessions, bans, roles, and indicator-access decisions.
+- A request-all indicator workflow that records TradingView usernames and consent for manual access grants.
 - A browser-local trade journal with create, list, detail, and shareable-view workflows.
-- Interface foundations for indicator and alert features, plus a native live economic calendar with high/medium impact and market filters.
+- A native live economic calendar with high/medium impact and market filters.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
-AI analysis, brokerage or execution-data imports, Discord SSO, PostgreSQL persistence, and editorial content pipelines are planned capabilities and are not connected in v0.1.1.
+AI analysis, brokerage or execution-data imports, PostgreSQL persistence, automated TradingView access grants, and editorial content pipelines are planned capabilities and are not connected in v0.1.1.
 
 ## Technology
 
@@ -57,6 +59,8 @@ http://127.0.0.1:4173
 
 Press `Ctrl+C` in the terminal window to stop the server.
 
+The launcher calls the existing `npm start` command. That command reads the local `.env` file automatically; the launcher never prints authentication secrets.
+
 ### Command line
 
 ```bash
@@ -64,7 +68,7 @@ npm install
 npm start
 ```
 
-The server reads `HOST` and `PORT` from the environment. Without overrides, `npm start` listens on `127.0.0.1:3000`.
+Copy `.env.example` to `.env` before the first local run. The supplied local configuration uses demonstration authentication and listens on `127.0.0.1:4173`. The `.env` file is ignored by Git and must remain uncommitted.
 
 For automatic restarts during development:
 
@@ -80,28 +84,61 @@ OMENSITE keeps only high- and medium-impact economic releases, maps each country
 
 The source provides release schedules and impact classifications derived from official public or openly licensed sources. It deliberately does not provide proprietary consensus forecasts, actual releases, or previous values. See the [Economicium calendar](https://www.economicium.com/economic-calendar/) and its [public JSON endpoint](https://www.economicium.com/api/calendar).
 
-## Demo access
+## Authentication and access
 
-Authentication currently operates in demonstration mode. Any non-empty username and passkey are accepted, such as:
+### Demo access
+
+With `AUTH_MODE=demo`, any non-empty username and passkey are accepted, such as:
 
 ```text
 Username: operator
 Passkey:  preview
 ```
 
-The authentication service is intentionally isolated so Discord OAuth can replace the demonstration provider without restructuring page controllers or views.
+`DEMO_ROLES` controls the local identity's roles. Demo mode is for workstation testing only and is rejected when `NODE_ENV=production`.
+
+### Discord SSO setup
+
+Discord authentication uses an OAuth2 application and the signed-in member's server roles. A Discord bot, bot user, and bot token are not required.
+
+1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications), then open **OAuth2**.
+2. Register this exact local redirect URI: `http://127.0.0.1:4173/auth/discord/callback`. Register the deployment's HTTPS callback separately before hosting.
+3. Copy the application's client ID and client secret into the matching `.env` entries. Never commit the populated `.env` file.
+4. In Discord, enable **User Settings → Advanced → Developer Mode**. Right-click the target server and each access role to copy their IDs into `DISCORD_GUILD_ID` and the five `DISCORD_ROLE_*_ID` entries. Configuration uses IDs, not editable role names.
+5. Generate a long, random production `SESSION_SECRET`, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`, and store it only in the deployment's secret configuration.
+6. Change `AUTH_MODE=discord` and restart the application.
+
+Users authorize only the `identify` and `guilds.members.read` OAuth2 scopes. OMENSITE rechecks the member's roles every five minutes by default. If Discord cannot confirm membership during a required refresh, access fails closed until the identity can be verified again.
+
+Role behavior is modular:
+
+- `Developer` and `Admin` grant base access, Indicators, Journal, and Admin capabilities.
+- `OS` grants base site access.
+- `Indicators` adds access to the Indicators module.
+- `Journal` adds access to the Journal module.
+- A member must have `Developer`, `Admin`, or `OS` for base site access; module-only roles do not admit a user by themselves.
+
+Every primary navigation item remains visible. When a user selects a module they cannot access, the existing terminal transition reports `ACCESS FAILED :: INSUFFICIENT PERMISSIONS` and returns them to the current page.
+
+### Temporary memory and TradingView access
+
+User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.1. Restarting the server clears this operational state. PostgreSQL and a durable production session store will replace these repositories in a later release.
+
+OMENSITE records a request for all active invite-only indicators, including the member's TradingView username and explicit consent. An authorized administrator must still open TradingView's **Manage Access** interface, grant or deny access manually, and then record the matching decision in OMENSITE. The application does not call an undocumented TradingView endpoint or grant access automatically.
 
 ## Application routes
 
 - `/login` — Authentication terminal
+- `/auth/discord` — Discord OAuth2 sign-in entry point when Discord mode is active
 - `/home` — Operations dashboard
-- `/indicators` — Indicator library foundation
+- `/indicators` — Invite-only indicator catalog and access-request workflow
 - `/market-news` — Live current-week high- and medium-impact economic calendar
 - `/alerts/ict` — ICT alert workspace
 - `/alerts/support-resistance` — Support and resistance alert workspace
 - `/journal` — Trade journal
 - `/journal/new` — New journal entry
 - `/journal/:id` — Public journal record
+- `/admin` — Temporary-memory user and indicator-request administration
 
 ## Testing
 
@@ -114,7 +151,7 @@ npm test
 ## Roadmap
 
 1. PostgreSQL-backed journal storage and server-side journal services.
-2. Discord OAuth for identity and access management.
+2. Durable Discord user, ban, session, and indicator-request persistence.
 3. Trade-execution ingestion from supported brokers or structured imports.
 4. AI-assisted post-trade analysis and pattern detection.
 5. Production indicator, educational-content, and weekly market-intelligence libraries.
@@ -122,7 +159,7 @@ npm test
 
 ## Production considerations
 
-Production startup requires `SESSION_SECRET` and a durable `express-session` store supplied through `createApp({ sessionStore })`. The in-memory store is reserved for local development and automated tests.
+Production startup requires `AUTH_MODE=discord`, complete Discord application/guild/role configuration, `SESSION_SECRET`, and a durable `express-session` store supplied through `createApp({ sessionStore })`. The in-memory store is reserved for local development and automated tests.
 
 Deployments must use HTTPS, either directly in Node.js or through a trusted reverse proxy, because production session cookies are marked `Secure`. `createApp` trusts one proxy hop by default in production; deployments with a different topology must provide the appropriate `trustProxy` value.
 
