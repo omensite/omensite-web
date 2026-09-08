@@ -9,13 +9,16 @@
   "scripts": {
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },
   "dependencies": {
+    "connect-pg-simple": "^10.0.0",
     "ejs": "^3.1.10",
     "express": "^5.2.1",
-    "express-session": "^1.19.0"
+    "express-session": "^1.19.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

@@ -29,7 +29,7 @@ This release establishes OMENSITE's application architecture and core user exper
 - Mode-aware demonstration and Discord OAuth2 authentication with server-enforced, role-based module access.
 - A temporary-memory Admin panel for user sessions, bans, roles, and indicator-access decisions.
 - A request-all indicator workflow that records TradingView usernames and consent for manual access grants.
-- A browser-local trade journal with create, list, detail, and shareable-view workflows.
+- A PostgreSQL-backed trade journal with create, list, detail, and shareable-view workflows shared by beta and production.
 - A native live economic calendar with high/medium impact and market filters.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
@@ -43,7 +43,7 @@ AI analysis, brokerage or execution-data imports, PostgreSQL persistence, automa
 - Vanilla JavaScript with progressive enhancement
 - CSS-based terminal, CRT, Matrix, and glitch presentation
 - `express-session` authentication boundary
-- Browser `localStorage` journal repository
+- PostgreSQL-backed authenticated journal API
 
 The application renders complete pages on direct requests. Internal navigation requests route fragments, replaces only the active content area, updates browser history, and rehydrates page-specific behavior. This preserves the fluidity of a client application while retaining dependable server routes and refresh behavior.
 
@@ -122,7 +122,7 @@ Every primary navigation item remains visible. When a user selects a module they
 
 ### Temporary memory and TradingView access
 
-User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.1. Restarting the server clears this operational state. PostgreSQL and a durable production session store will replace these repositories in a later release.
+User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.1. Restarting the server clears this operational state. Login sessions and journal records are durable in PostgreSQL; the remaining administrative repositories will move there in a later release.
 
 OMENSITE records a request for all active invite-only indicators, including the member's TradingView username and explicit consent. An authorized administrator must still open TradingView's **Manage Access** interface, grant or deny access manually, and then record the matching decision in OMENSITE. The application does not call an undocumented TradingView endpoint or grant access automatically.
 
@@ -150,16 +150,19 @@ npm test
 
 ## Roadmap
 
-1. PostgreSQL-backed journal storage and server-side journal services.
-2. Durable Discord user, ban, session, and indicator-request persistence.
-3. Trade-execution ingestion from supported brokers or structured imports.
-4. AI-assisted post-trade analysis and pattern detection.
-5. Production indicator, educational-content, and weekly market-intelligence libraries.
-6. Future streaming updates and configurable alert providers.
+1. Durable Discord user, ban, session-index, and indicator-request persistence.
+2. Trade-execution ingestion from supported brokers or structured imports.
+3. AI-assisted post-trade analysis and pattern detection.
+4. Production indicator, educational-content, and weekly market-intelligence libraries.
+5. Future streaming updates and configurable alert providers.
 
 ## Production considerations
 
 Production startup requires `AUTH_MODE=discord`, complete Discord application/guild/role configuration, `SESSION_SECRET`, and a durable `express-session` store supplied through `createApp({ sessionStore })`. The in-memory store is reserved for local development and automated tests.
+
+The hosted runtime supplies PostgreSQL for both sessions and journal records. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. The journal API scopes records to the authenticated Discord identity, so a beta write is immediately visible to that identity in production.
+
+This repository includes `Dockerfile`, `compose.hosting.yml`, and `environment.hosting.example` for Portainer GitOps deployments. The beta stack tracks `dev`; the production stack tracks `main`. Run `npm run migrate` only through the production-only migration profile after a verified backup. The runner requires `APP_ENVIRONMENT=production`, `APP_ALLOW_MIGRATIONS=true`, and `DATABASE_URL`; the web service always receives `APP_ALLOW_MIGRATIONS=false`. The public `/health` endpoint reports `503` whenever PostgreSQL is unavailable.
 
 Deployments must use HTTPS, either directly in Node.js or through a trusted reverse proxy, because production session cookies are marked `Secure`. `createApp` trusts one proxy hop by default in production; deployments with a different topology must provide the appropriate `trustProxy` value.
 

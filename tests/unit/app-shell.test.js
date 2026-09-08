@@ -45,14 +45,12 @@ const adminFragment = `
     <output data-admin-feedback></output>
   </section>`;
 
-test("home journal count hydrates from legacy local entries after full and fragment renders", async () => {
+test("home journal count hydrates from the shared journal service after full and fragment renders", async () => {
   const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, {
     url: "http://localhost/home",
   });
   dom.window.matchMedia = () => ({ matches: true });
-  dom.window.localStorage.setItem("omensite.journal.v1", JSON.stringify([
-    { id: "legacy-1", direction: "long" },
-  ]));
+  let entries = [{ id: "shared-1", direction: "long" }];
   const instance = initializeAppShell({
     documentRef: dom.window.document,
     windowRef: dom.window,
@@ -64,16 +62,14 @@ test("home journal count hydrates from legacy local entries after full and fragm
         "X-Omensite-Key": "home",
       },
     }),
+    journalService: { list: () => entries },
   });
 
   const initialCount = dom.window.document.querySelector("[data-journal-count]");
   assert.equal(initialCount.textContent, "1");
   assert.equal(initialCount.classList.contains("muted"), false);
 
-  dom.window.localStorage.setItem("omensite.journal.v1", JSON.stringify([
-    { id: "legacy-1", direction: "long" },
-    { id: "legacy-2", direction: "short" },
-  ]));
+  entries = [{ id: "shared-1", direction: "long" }, { id: "shared-2", direction: "short" }];
   await instance.navigator.navigate("/home");
 
   const fragmentCount = dom.window.document.querySelector("[data-journal-count]");
@@ -86,7 +82,12 @@ test("home journal count hydrates from legacy local entries after full and fragm
 test("home journal count retains accepted muted styling at zero", () => {
   const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, { url: "http://localhost/home" });
   dom.window.matchMedia = () => ({ matches: true });
-  const instance = initializeAppShell({ documentRef: dom.window.document, windowRef: dom.window, fetchImpl: async () => new Response() });
+  const instance = initializeAppShell({
+    documentRef: dom.window.document,
+    windowRef: dom.window,
+    fetchImpl: async () => new Response(),
+    journalService: { list: () => [] },
+  });
 
   const count = dom.window.document.querySelector("[data-journal-count]");
   assert.equal(count.textContent, "0");

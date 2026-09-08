@@ -117,15 +117,24 @@ function initializeNewEntryPage(root, service) {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     for (const name of ["entryTime", "entryPrice", "exitPrice", "notes"]) draft[name] = form.elements[name]?.value ?? "";
-    const entry = service.create({
-      ...draft,
-      confluences: draft.confluences.slice(),
-      screenshotCount: pageState.screenshotCount,
-    });
-    pageState.newEntry = freshJournalEntry();
-    pageState.screenshotCount = 0;
-    showToast(root, "ENTRY SUBMITTED :: WEBHOOK DELIVERED");
-    service.navigate?.(`/journal/${entry.id}`);
+    const finish = (entry) => {
+      pageState.newEntry = freshJournalEntry();
+      pageState.screenshotCount = 0;
+      showToast(root, "ENTRY SUBMITTED :: SHARED DATABASE UPDATED");
+      service.navigate?.(`/journal/${entry.id}`);
+    };
+    const fail = () => showToast(root, "ENTRY NOT SAVED :: TRY AGAIN");
+    try {
+      const entry = service.create({
+        ...draft,
+        confluences: draft.confluences.slice(),
+        screenshotCount: pageState.screenshotCount,
+      });
+      if (entry?.then) entry.then(finish, fail);
+      else finish(entry);
+    } catch {
+      fail();
+    }
   });
 }
 
@@ -228,9 +237,15 @@ function renderPublicEntry(root, entry) {
 export function initializeJournalPage(root, service) {
   const key = root.dataset.routeKey;
   if (key === "journal-new") initializeNewEntryPage(root, service);
-  if (key === "journal") renderList(root, service.list());
+  if (key === "journal") {
+    const entries = service.list();
+    if (entries?.then) entries.then((value) => renderList(root, value), () => renderList(root, []));
+    else renderList(root, entries);
+  }
   if (key === "journal-public") {
-    renderPublicEntry(root, service.find(root.dataset.entryId));
+    const entry = service.find(root.dataset.entryId);
+    if (entry?.then) entry.then((value) => renderPublicEntry(root, value), () => renderPublicEntry(root));
+    else renderPublicEntry(root, entry);
     root.querySelector("[data-journal-copy-link]")?.addEventListener("click", async () => {
       const link = root.querySelector("[data-public-link]")?.textContent;
       try {

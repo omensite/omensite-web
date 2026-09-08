@@ -24,6 +24,7 @@ import { createIndicatorRoutes } from "./routes/indicator-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 import { LOGIN_ERROR_MESSAGES } from "./models/access.js";
+import { createInMemoryJournalRepository } from "./repositories/in-memory-journal-repository.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +46,8 @@ export function createApp({
   marketNewsService = createMarketNewsService({
     provider: createEconomiciumCalendarProvider(),
   }),
+  journalRepository = createInMemoryJournalRepository(),
+  readinessCheck = async () => true,
   configureRoutes,
   logger = console,
 } = {}) {
@@ -128,6 +131,14 @@ export function createApp({
   }));
 
   app.use(fragmentRequest);
+  app.get("/health", async (req, res) => {
+    try {
+      const ready = await readinessCheck();
+      return res.status(ready ? 200 : 503).json({ status: ready ? "ok" : "unavailable" });
+    } catch {
+      return res.status(503).json({ status: "unavailable" });
+    }
+  });
   app.use((req, res, next) => {
     if (req.session.operator) res.locals.csrfToken = ensureCsrfToken(req);
     next();
@@ -153,7 +164,7 @@ export function createApp({
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));
   app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));
-  app.use(createJournalRoutes());
+  app.use(createJournalRoutes({ journalRepository }));
 
   app.use((req, res) => res.status(404).render("pages/error", {
     fragment: req.isOmensiteFragment, status: 404, heading: "ROUTE NOT FOUND",
