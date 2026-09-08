@@ -49,6 +49,7 @@ services:
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.entrypoints=websecure
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.rule=${APP_HOST_RULE}
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.tls=true
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.tls.certresolver=cloudflare
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.middlewares=${APP_AUTH_MIDDLEWARE}
       - traefik.http.services.${APP_SLUG}-${APP_ENVIRONMENT}.loadbalancer.server.port=${APP_INTERNAL_PORT}
     logging:
