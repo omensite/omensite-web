@@ -37,6 +37,9 @@
             <div class="login-prompt">&gt; authenticate with the authorized Discord server</div>
             <% if (authError) { %><div class="login-err" role="alert" data-login-page-error><%= authError %></div><% } %>
             <a class="btn btn-primary btn-login" href="/auth/discord" data-discord-login>[ CONTINUE WITH DISCORD ]</a>
+          <% } else if (authMode === "proxy") { %>
+            <div class="login-prompt">&gt; authenticate through the beta access gateway</div>
+            <a class="btn btn-primary btn-login" href="/" data-proxy-login>[ RETURN TO SSO ]</a>
           <% } else { %>
             <form class="login-form" action="/auth/login" method="post" novalidate data-login-form>
               <div class="login-prompt">&gt; identify yourself to continue</div>

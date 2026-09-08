@@ -13,11 +13,16 @@ export function createAuthRoutes({ authConfig, authService, sessionRegistry, log
     router.get("/discord", notFound);
     router.get("/discord/callback", notFound);
     router.get("/complete", notFound);
-  } else {
+  } else if (authConfig.mode === "discord") {
     router.post("/login", notFound);
     router.get("/discord", authController.beginDiscord);
     router.get("/discord/callback", authController.completeDiscord);
     router.get("/complete", authController.showComplete);
+  } else {
+    router.post("/login", notFound);
+    router.get("/discord", notFound);
+    router.get("/discord/callback", notFound);
+    router.get("/complete", notFound);
   }
   router.post("/logout", requireCsrf, authController.logout);
 

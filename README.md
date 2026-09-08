@@ -158,7 +158,7 @@ npm test
 
 ## Production considerations
 
-Production startup requires `AUTH_MODE=discord`, complete Discord application/guild/role configuration, `SESSION_SECRET`, and a durable `express-session` store supplied through `createApp({ sessionStore })`. The in-memory store is reserved for local development and automated tests.
+Production startup requires `AUTH_MODE=discord` with complete Discord application/guild/role configuration, or `AUTH_MODE=proxy` when the stack is protected by the platform's Authentik forward-auth middleware. It also requires `SESSION_SECRET` and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Proxy mode trusts only the Authentik identity headers supplied on the private container network and grants every admitted beta guild member preview access; it must never be used on a router without forward auth.
 
 The hosted runtime supplies PostgreSQL for both sessions and journal records. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. The journal API scopes records to the authenticated Discord identity, so a beta write is immediately visible to that identity in production.
 

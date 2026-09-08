@@ -25,6 +25,7 @@ import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 import { LOGIN_ERROR_MESSAGES } from "./models/access.js";
 import { createInMemoryJournalRepository } from "./repositories/in-memory-journal-repository.js";
+import { createProxyAuth } from "./middleware/proxy-auth.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,8 +59,8 @@ export function createApp({
     roleRefreshMs: 300_000,
     discord: null,
   };
-  if (environment === "production" && resolvedAuthConfig.mode !== "discord") {
-    throw new Error("Discord authentication is required in production");
+  if (environment === "production" && !["discord", "proxy"].includes(resolvedAuthConfig.mode)) {
+    throw new Error("Discord authentication is required in production unless trusted proxy authentication is configured");
   }
   const secret = sessionSecret || resolvedAuthConfig.sessionSecret || process.env.SESSION_SECRET;
   if (!secret && environment === "production") {
@@ -129,6 +130,10 @@ export function createApp({
       secure: environment === "production",
     },
   }));
+
+  if (resolvedAuthConfig.mode === "proxy") {
+    app.use(createProxyAuth({ userRepository, sessionRegistry }));
+  }
 
   app.use(fragmentRequest);
   app.get("/health", async (req, res) => {
