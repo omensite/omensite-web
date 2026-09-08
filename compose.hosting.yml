@@ -1,0 +1,53 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: ${APP_INTERNAL_PORT:?Set in Portainer}
+      DATABASE_URL: ${DATABASE_URL:?Store the shared production database URL in Portainer}
+      DATABASE_SSL: ${DATABASE_SSL:-disable}
+      SESSION_SECRET: ${SESSION_SECRET:?Store in Portainer}
+    expose:
+      - ${APP_INTERNAL_PORT:?Set in Portainer}
+    networks:
+      - omen_edge
+      - omen_data
+    cpus: ${APP_CPUS:?Set in Portainer}
+    mem_limit: ${APP_MEMORY:?Set in Portainer}
+    pids_limit: ${APP_PIDS_LIMIT:?Set in Portainer}
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:${APP_INTERNAL_PORT}${APP_HEALTH_PATH} || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=omen_edge
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.entrypoints=websecure
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.rule=${APP_HOST_RULE}
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.tls=true
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.middlewares=${APP_AUTH_MIDDLEWARE}
+      - traefik.http.services.${APP_SLUG}-${APP_ENVIRONMENT}.loadbalancer.server.port=${APP_INTERNAL_PORT}
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  omen_edge:
+    name: omen_edge
+    external: true
+  omen_data:
+    name: omen_data
+    external: true

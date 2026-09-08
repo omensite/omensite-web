@@ -17,6 +17,7 @@ export function createApp({
   environment = process.env.NODE_ENV ?? "development",
   trustProxy,
   authService = createAuthService(),
+  readinessCheck = async () => true,
   configureRoutes,
   logger = console,
 } = {}) {
@@ -48,6 +49,14 @@ export function createApp({
   }));
 
   app.use(fragmentRequest);
+  app.get("/health", async (req, res) => {
+    try {
+      const ready = await readinessCheck();
+      return res.status(ready ? 200 : 503).json({ status: ready ? "ok" : "unavailable" });
+    } catch {
+      return res.status(503).json({ status: "unavailable" });
+    }
+  });
   app.get("/", (req, res) => res.redirect(req.session.operator ? "/home" : "/login"));
   app.get("/login", (req, res) => req.session.operator ? res.redirect("/home") : res.render("layouts/login"));
   app.use("/auth", createAuthRoutes({ authService }));

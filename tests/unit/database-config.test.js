@@ -1,0 +1,30 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readDatabaseConfig } from "../../src/config/database-config.js";
+
+test("production database configuration is required and redacts its connection string", () => {
+  assert.throws(
+    () => readDatabaseConfig({ env: {}, nodeEnvironment: "production" }),
+    /DATABASE_URL is required/,
+  );
+
+  const config = readDatabaseConfig({
+    env: { DATABASE_URL: "postgres://omen:super-secret@database:5432/omensite" },
+    nodeEnvironment: "production",
+  });
+
+  assert.equal(config.connectionString, "postgres://omen:super-secret@database:5432/omensite");
+  assert.equal(JSON.stringify(config), '{"configured":true,"ssl":false}');
+});
+
+test("database TLS is explicit and development may run without PostgreSQL", () => {
+  const development = readDatabaseConfig({ env: {}, nodeEnvironment: "development" });
+  assert.equal(development.configured, false);
+  assert.equal(development.connectionString, "");
+  assert.equal(development.ssl, false);
+  assert.equal(readDatabaseConfig({ env: { DATABASE_URL: "postgres://db/app", DATABASE_SSL: "require" } }).ssl, true);
+  assert.throws(
+    () => readDatabaseConfig({ env: { DATABASE_URL: "postgres://db/app", DATABASE_SSL: "sometimes" } }),
+    /DATABASE_SSL/,
+  );
+});

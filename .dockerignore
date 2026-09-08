@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+npm-debug.log*
+.env*
+coverage
+reference
+docs
+tests
+start-omensite.bat
+

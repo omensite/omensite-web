@@ -52,3 +52,30 @@ test("server honors HOST and logs the full listening address", async () => {
     child.kill();
   }
 });
+
+test("production server wires PostgreSQL sessions and readiness", async () => {
+  const host = "127.0.0.1";
+  const port = await reservePort(host);
+  const child = spawn(process.execPath, ["src/server.js"], {
+    cwd: new URL("../..", import.meta.url),
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      HOST: host,
+      PORT: String(port),
+      SESSION_SECRET: "production-test-secret",
+      DATABASE_URL: "postgres://operator:secret@127.0.0.1:1/omensite",
+      DATABASE_SSL: "disable",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  try {
+    await waitForOutput(child, /OMENSITE listening/);
+    const response = await fetch(`http://${host}:${port}/health`);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { status: "unavailable" });
+  } finally {
+    child.kill();
+  }
+});
