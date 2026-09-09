@@ -92,6 +92,7 @@ test("discord configuration maps all required values", () => {
     demoRoles: [],
     roleRefreshMs: 300_000,
     discord: {
+      accessPolicy: "roles",
       clientId: "client-id",
       clientSecret: "client-secret",
       redirectUri: "http://localhost/auth/discord/callback",
@@ -105,4 +106,19 @@ test("discord configuration maps all required values", () => {
       },
     },
   });
+});
+
+test("beta guild preview requires explicit beta selection and still requires Discord credentials", () => {
+  const env = {
+    ...discordEnvironment, APP_ENVIRONMENT: "beta", DISCORD_ACCESS_POLICY: "beta-guild",
+    DISCORD_ROLE_DEVELOPER_ID: "", DISCORD_ROLE_ADMIN_ID: "", DISCORD_ROLE_OS_ID: "",
+    DISCORD_ROLE_INDICATORS_ID: "", DISCORD_ROLE_JOURNAL_ID: "",
+  };
+  assert.equal(readAuthConfig({ env, nodeEnvironment: "production" }).discord.accessPolicy, "beta-guild");
+  for (const environment of ["production", "", "development"]) {
+    assert.throws(() => readAuthConfig({ env: { ...env, APP_ENVIRONMENT: environment } }), /only allowed with APP_ENVIRONMENT=beta/);
+  }
+  assert.throws(() => readAuthConfig({ env: { ...env, DISCORD_CLIENT_SECRET: "" } }), /DISCORD_CLIENT_SECRET/);
+  assert.throws(() => readAuthConfig({ env: { ...env, DISCORD_ACCESS_POLICY: "roles" } }), /DISCORD_ROLE_DEVELOPER_ID/);
+  assert.throws(() => readAuthConfig({ env: { ...env, DISCORD_ACCESS_POLICY: "public" } }), /DISCORD_ACCESS_POLICY must be/);
 });

@@ -79,6 +79,7 @@ export function createApp({
     mode: resolvedAuthConfig.mode,
     demoRoles: resolvedAuthConfig.demoRoles,
     discordProvider: resolvedDiscordProvider,
+    discordAccessPolicy: resolvedAuthConfig.discord?.accessPolicy ?? "roles",
     rolePolicy: createRolePolicy({ roleIds: resolvedAuthConfig.discord?.roleIds ?? {} }),
     userRepository,
     banRepository,

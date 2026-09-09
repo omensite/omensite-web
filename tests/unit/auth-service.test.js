@@ -15,6 +15,34 @@ const rolePolicy = createRolePolicy({
 });
 const now = () => new Date("2026-09-02T12:00:00.000Z");
 
+test("beta guild preview requires live membership on login and refresh, and still enforces bans", async () => {
+  let member = true;
+  let banned = false;
+  const service = createAuthService({
+    mode: "discord", discordAccessPolicy: "beta-guild", rolePolicy, now,
+    banRepository: { isBanned: () => banned },
+    discordProvider: {
+      exchangeCode: async () => ({ accessToken: "access", expiresAt: "2099-01-01T00:00:00Z" }),
+      getCurrentUser: async () => ({ id: "42", username: "member", displayName: "Member" }),
+      getCurrentGuildMember: async () => {
+        if (!member) throw Object.assign(new Error("Not a guild member"), { code: "DISCORD_HTTP_ERROR" });
+        return { roles: [] };
+      },
+    },
+  });
+  const operator = await service.completeDiscord({ code: "code" });
+  assert.deepEqual(operator.roles, ["Developer"]);
+  assert.deepEqual(new Set(operator.capabilities), new Set(["base", "indicators", "journal", "admin"]));
+  assert.equal((await service.refreshOperator(operator)).authMode, "discord");
+  member = false;
+  await assert.rejects(() => service.completeDiscord({ code: "code" }), { code: "DISCORD_HTTP_ERROR" });
+  await assert.rejects(() => service.refreshOperator(operator), { code: "DISCORD_HTTP_ERROR" });
+  member = true;
+  banned = true;
+  await assert.rejects(() => service.completeDiscord({ code: "code" }), { code: "ACCOUNT_BANNED" });
+  await assert.rejects(() => service.refreshOperator(operator), { code: "ACCOUNT_BANNED" });
+});
+
 test("demo authentication rejects blank credentials", async () => {
   const service = createAuthService({ mode: "demo" });
 

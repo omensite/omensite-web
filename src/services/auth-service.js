@@ -24,6 +24,7 @@ export function createAuthService({
   mode = "demo",
   demoRoles = [],
   discordProvider,
+  discordAccessPolicy = "roles",
   rolePolicy = createRolePolicy({ roleIds: {} }),
   userRepository = { upsert: (record) => record },
   banRepository = { isBanned: () => false },
@@ -67,6 +68,14 @@ export function createAuthService({
     return operator;
   }
 
+  function discordAccess(member) {
+    // This opt-in beta policy preserves the former gateway's full guild preview.
+    // Only call it after Discord's live member endpoint confirms membership.
+    return discordAccessPolicy === "beta-guild"
+      ? rolePolicy.fromRoleNames(["Developer"])
+      : rolePolicy.fromDiscordRoleIds(member.roles);
+  }
+
   async function authenticateDemo({ username = "", passkey = "" } = {}) {
     const normalizedUsername = username.trim();
     if (!normalizedUsername || !passkey.trim()) {
@@ -108,7 +117,7 @@ export function createAuthService({
     ]);
     rejectIfBanned(identity.id);
 
-    const access = rolePolicy.fromDiscordRoleIds(member.roles);
+    const access = discordAccess(member);
     rejectIfNoBaseAccess(access);
     const signedInAt = toIsoTimestamp(now());
     const operator = buildOperator({
@@ -132,7 +141,7 @@ export function createAuthService({
     }
 
     const member = await discordProvider.getCurrentGuildMember({ accessToken: discordAuth?.accessToken });
-    const access = rolePolicy.fromDiscordRoleIds(member.roles);
+    const access = discordAccess(member);
     rejectIfNoBaseAccess(access);
     const refreshed = buildOperator({
       identity: {

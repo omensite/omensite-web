@@ -12,6 +12,9 @@ DATABASE_URL=stored-in-portainer-not-this-file
 DATABASE_SSL=disable
 SESSION_SECRET=stored-in-portainer-not-this-file
 AUTH_MODE=discord
+DISCORD_ACCESS_POLICY=roles
+# To preserve full preview for every beta guild member, explicitly set beta-guild.
+# beta-guild is rejected unless APP_ENVIRONMENT=beta; it does not require role IDs.
 DISCORD_CLIENT_ID=stored-in-portainer-not-this-file
 DISCORD_CLIENT_SECRET=stored-in-portainer-not-this-file
 DISCORD_REDIRECT_URI=https://beta.example.com/auth/discord/callback

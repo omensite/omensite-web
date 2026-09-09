@@ -114,6 +114,8 @@ Popup completion is checked through the server session with an attempt identifie
 
 Users authorize only the `identify` and `guilds.members.read` OAuth2 scopes. OMENSITE rechecks the member's roles every five minutes by default. If Discord cannot confirm membership during a required refresh, access fails closed until the identity can be verified again.
 
+`DISCORD_ACCESS_POLICY=roles` is the default and requires the five role IDs. An existing beta deployment that admits every guild member can explicitly select `DISCORD_ACCESS_POLICY=beta-guild` with `APP_ENVIRONMENT=beta`. This preserves the former gateway's full preview access, including Admin, after a successful live Discord membership check; no role IDs are needed. Membership is rechecked at least every five minutes, and removed members or failed Discord checks lose access. This policy is rejected outside the beta environment.
+
 Role behavior is modular:
 
 - `Developer` and `Admin` grant base access, Indicators, Journal, and Admin capabilities.
@@ -162,7 +164,7 @@ npm test
 
 ## Production considerations
 
-Production startup requires `AUTH_MODE=discord` with complete Discord application/guild/role configuration, `SESSION_SECRET`, and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Authentik proxy authentication has been removed; forwarded identity headers cannot create a session, and existing sessions from the former authentication mode must sign in again. Discord roles now determine access for beta and production alike.
+Production startup requires `AUTH_MODE=discord` with complete Discord application/guild configuration, the role IDs when using the default roles policy, `SESSION_SECRET`, and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Authentik proxy authentication has been removed; forwarded identity headers cannot create a session, and existing sessions from the former authentication mode must sign in again. The explicit beta-guild policy preserves existing beta guild preview access; other deployments use Discord roles.
 
 The hosted runtime supplies PostgreSQL for both sessions and journal records. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. The journal API scopes records to the authenticated Discord identity, so a beta write is immediately visible to that identity in production.
 
@@ -170,7 +172,7 @@ This repository includes `Dockerfile`, `compose.hosting.yml`, and `environment.h
 
 The hosting Compose file fixes `AUTH_MODE=discord` and attaches only the existing `security-headers@file,compression@file` Traefik middleware. Old Portainer `AUTH_MODE=proxy` and `APP_AUTH_MIDDLEWARE` values no longer control this app. Host rules, domains, networks, and HTTPS routing are unchanged.
 
-To switch an existing beta stack, populate all `DISCORD_*` settings listed in `environment.hosting.example` before redeploying the updated `dev` revision. Keep the current site hostname and register `https://<current-site-hostname>/auth/discord/callback` on the Discord application. Ensure admitted members have the OS, Admin, or Developer role before the switch; membership alone no longer grants full preview access. Compose refuses to start with missing Discord settings. If an additional Authentik gate is configured outside this app's router (for example on a shared entrypoint), remove that gate for this app as part of the hosting rollout.
+To switch an existing beta stack, populate the Discord client ID, client secret, guild ID, and redirect URI in Portainer before redeploying the updated `dev` revision. For `beta.omensite.com`, register `https://beta.omensite.com/auth/discord/callback` on the Discord application. Use `DISCORD_ACCESS_POLICY=beta-guild` to preserve membership-based full preview, or supply all five role IDs for the default roles policy. Missing required settings stop deployment instead of admitting anonymous users. If an additional Authentik gate is configured outside this app's router (for example on a shared entrypoint), remove that gate for this app as part of the hosting rollout.
 
 Deployments must use HTTPS, either directly in Node.js or through a trusted reverse proxy, because production session cookies are marked `Secure`. `createApp` trusts one proxy hop by default in production; deployments with a different topology must provide the appropriate `trustProxy` value.
 

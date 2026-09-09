@@ -6,6 +6,8 @@ const DISCORD_KEYS = Object.freeze([
   "DISCORD_CLIENT_SECRET",
   "DISCORD_REDIRECT_URI",
   "DISCORD_GUILD_ID",
+]);
+const DISCORD_ROLE_KEYS = Object.freeze([
   "DISCORD_ROLE_DEVELOPER_ID",
   "DISCORD_ROLE_ADMIN_ID",
   "DISCORD_ROLE_OS_ID",
@@ -26,12 +28,21 @@ function readRoleRefreshMs(env) {
 }
 
 function readDiscordConfig(env) {
-  const missingKeys = DISCORD_KEYS.filter((key) => !readValue(env, key));
+  const accessPolicy = readValue(env, "DISCORD_ACCESS_POLICY") || "roles";
+  if (!["roles", "beta-guild"].includes(accessPolicy)) {
+    throw new Error("DISCORD_ACCESS_POLICY must be roles or beta-guild");
+  }
+  if (accessPolicy === "beta-guild" && readValue(env, "APP_ENVIRONMENT") !== "beta") {
+    throw new Error("DISCORD_ACCESS_POLICY=beta-guild is only allowed with APP_ENVIRONMENT=beta");
+  }
+  const requiredKeys = accessPolicy === "roles" ? [...DISCORD_KEYS, ...DISCORD_ROLE_KEYS] : DISCORD_KEYS;
+  const missingKeys = requiredKeys.filter((key) => !readValue(env, key));
   if (missingKeys.length > 0) {
     throw new Error(`Missing required Discord configuration: ${missingKeys.join(", ")}`);
   }
 
   return {
+    accessPolicy,
     clientId: readValue(env, "DISCORD_CLIENT_ID"),
     clientSecret: readValue(env, "DISCORD_CLIENT_SECRET"),
     redirectUri: readValue(env, "DISCORD_REDIRECT_URI"),
