@@ -1,6 +1,7 @@
 import { runLoginSequence, AUTH_LINES } from "./login-sequence.js";
 import { startMatrix } from "./matrix-renderer.js";
 import { startSphereRenderer } from "./sphere-renderer.js";
+import { initializeDiscordLogin } from "./discord-login.js";
 
 const CREDENTIAL_ERROR = "> ERR :: CREDENTIALS REQUIRED — USER AND PASSKEY";
 const REQUEST_ERROR = "> ERR :: LOGIN REQUEST FAILED — RETRY";
@@ -64,7 +65,13 @@ export function initializeLoginController({
 } = {}) {
   const form = documentRef.querySelector("[data-login-form]");
   const completion = documentRef.querySelector("[data-auth-complete]");
-  if (!form && !completion) return null;
+  const discordEntry = documentRef.querySelector("[data-discord-entry]");
+  const popupResult = documentRef.querySelector("[data-discord-popup-result]");
+  if (!form && !completion && !discordEntry && !popupResult) return null;
+  if (popupResult) {
+    try { windowRef.close(); } catch { /* A visible link remains if the browser refuses to close. */ }
+    return null;
+  }
 
   const root = documentRef.querySelector("[data-login-root]");
   const card = form?.closest(".login-card");
@@ -125,6 +132,12 @@ export function initializeLoginController({
   };
 
   form?.addEventListener("submit", onSubmit);
+  const discord = initializeDiscordLogin({
+    documentRef, windowRef, fetchImpl,
+    onComplete: (entry) => replaceEntryWithStream({
+      documentRef, entry, root, reducedMotion, redirectTo: "/home", windowRef, stopSphere: stopLoginSphere,
+    }),
+  });
   if (completion) {
     void replaceEntryWithStream({
       documentRef,
@@ -139,6 +152,7 @@ export function initializeLoginController({
   return {
     dispose() {
       form?.removeEventListener("submit", onSubmit);
+      discord?.dispose();
       stopLoginSphere();
     },
   };

@@ -3,6 +3,7 @@ const ROUTE_NOT_FOUND_MESSAGE = "ROUTE NOT FOUND :: CURRENT BUFFER RETAINED";
 const SYSTEM_ERROR_MESSAGE = "SYSTEM ERROR :: RETRY ROUTE";
 const ACCESS_DENIED_MESSAGE = "ACCESS FAILED :: INSUFFICIENT PERMISSIONS";
 const LOGIN_ERROR_CODES = new Set([
+  "discord_cancelled",
   "invalid_oauth_state",
   "discord_auth_failed",
   "access_revoked",

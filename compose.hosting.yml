@@ -16,16 +16,16 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Store the shared production database URL in Portainer}
       DATABASE_SSL: ${DATABASE_SSL:-disable}
       SESSION_SECRET: ${SESSION_SECRET:?Store in Portainer}
-      AUTH_MODE: ${AUTH_MODE:?Set in Portainer}
-      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
-      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
-      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
-      DISCORD_ROLE_DEVELOPER_ID: ${DISCORD_ROLE_DEVELOPER_ID:-}
-      DISCORD_ROLE_ADMIN_ID: ${DISCORD_ROLE_ADMIN_ID:-}
-      DISCORD_ROLE_OS_ID: ${DISCORD_ROLE_OS_ID:-}
-      DISCORD_ROLE_INDICATORS_ID: ${DISCORD_ROLE_INDICATORS_ID:-}
-      DISCORD_ROLE_JOURNAL_ID: ${DISCORD_ROLE_JOURNAL_ID:-}
+      AUTH_MODE: discord
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Set in Portainer}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:?Set in Portainer}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:?Set the existing site HTTPS callback in Portainer}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:?Set in Portainer}
+      DISCORD_ROLE_DEVELOPER_ID: ${DISCORD_ROLE_DEVELOPER_ID:?Set in Portainer}
+      DISCORD_ROLE_ADMIN_ID: ${DISCORD_ROLE_ADMIN_ID:?Set in Portainer}
+      DISCORD_ROLE_OS_ID: ${DISCORD_ROLE_OS_ID:?Set in Portainer}
+      DISCORD_ROLE_INDICATORS_ID: ${DISCORD_ROLE_INDICATORS_ID:?Set in Portainer}
+      DISCORD_ROLE_JOURNAL_ID: ${DISCORD_ROLE_JOURNAL_ID:?Set in Portainer}
       DISCORD_ROLE_REFRESH_MINUTES: ${DISCORD_ROLE_REFRESH_MINUTES:-5}
     expose:
       - ${APP_INTERNAL_PORT:?Set in Portainer}
@@ -50,7 +50,8 @@ services:
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.rule=${APP_HOST_RULE}
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.tls=true
       - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.tls.certresolver=cloudflare
-      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.middlewares=${APP_AUTH_MIDDLEWARE}
+      # Authentication belongs to this app; do not reattach the former SSO gateway.
+      - traefik.http.routers.${APP_SLUG}-${APP_ENVIRONMENT}.middlewares=security-headers@file,compression@file
       - traefik.http.services.${APP_SLUG}-${APP_ENVIRONMENT}.loadbalancer.server.port=${APP_INTERNAL_PORT}
     logging:
       driver: json-file

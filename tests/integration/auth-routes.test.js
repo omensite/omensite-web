@@ -129,8 +129,8 @@ test("fragment requests receive 401 instead of a redirect", async () => {
   await request(createTestApp()).get("/home").set("X-Omensite-Fragment", "1").expect(401).expect({ error: "AUTH_REQUIRED", loginUrl: "/login" });
 });
 
-test("login identifies the current v0.1.1 release", async () => {
-  await request(createTestApp()).get("/login").expect(200).expect(/OMENSITE TRADING TERMINAL v0\.1\.1/);
+test("login identifies the current v0.1.2 release", async () => {
+  await request(createTestApp()).get("/login").expect(200).expect(/OMENSITE TRADING TERMINAL v0\.1\.2/);
 });
 
 test("login renders only allowlisted authentication failures with fixed messages", async () => {

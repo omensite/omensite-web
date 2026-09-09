@@ -1,5 +1,8 @@
 import { ensureCsrfToken } from "../security/csrf.js";
 
+const POPUP_ATTEMPT = /^[a-zA-Z0-9_-]{20,80}$/;
+const POPUP_LIFETIME_MS = 5 * 60_000;
+
 function regenerateSession(req) {
   return new Promise((resolve, reject) => {
     req.session.regenerate((error) => error ? reject(error) : resolve());
@@ -36,6 +39,12 @@ function discordFailureLocation(error) {
 }
 
 export function createAuthController({ authService, sessionRegistry, logger = console }) {
+  async function finishPopup(req, res, popup, error = null) {
+    req.session.discordPopup = { ...popup, status: error ? "error" : "complete", error };
+    await saveSession(req);
+    return res.redirect("/auth/discord/popup-complete");
+  }
+
   async function establishOperator(req, operator, { complete = false } = {}) {
     const previousOperator = req.session.operator;
     const previousSessionId = req.sessionID;
@@ -47,7 +56,8 @@ export function createAuthController({ authService, sessionRegistry, logger = co
       authService.assertOperatorAdmission?.(operator);
     } catch (error) {
       try {
-        await destroySession(req);
+        // Retain an empty session so popup failures can reach the waiting terminal.
+        await regenerateSession(req);
       } catch {
         // The admission failure is authoritative and safe to report.
       }
@@ -82,10 +92,14 @@ export function createAuthController({ authService, sessionRegistry, logger = co
       }
     },
 
-    beginDiscord(req, res, next) {
+    async beginDiscord(req, res, next) {
       try {
         const { state, authorizationUrl } = authService.beginDiscord();
         req.session.oauthState = state;
+        req.session.discordPopup = typeof req.query.popup === "string" && POPUP_ATTEMPT.test(req.query.popup)
+          ? { id: req.query.popup, status: "pending", startedAt: Date.now() }
+          : null;
+        await saveSession(req);
         return res.redirect(authorizationUrl);
       } catch (error) {
         return next(error);
@@ -94,26 +108,70 @@ export function createAuthController({ authService, sessionRegistry, logger = co
 
     async completeDiscord(req, res, next) {
       const expectedState = req.session.oauthState;
+      const popup = req.session.discordPopup?.status === "pending" ? req.session.discordPopup : null;
+      const fail = (error) => popup
+        ? finishPopup(req, res, popup, error)
+        : res.redirect(`/login?error=${error}`);
       delete req.session.oauthState;
       if (expectedState) await saveSession(req);
       const suppliedState = typeof req.query.state === "string" ? req.query.state : "";
       if (!expectedState || suppliedState !== expectedState) {
-        return res.redirect("/login?error=invalid_oauth_state");
+        return fail("invalid_oauth_state");
       }
 
+      if (popup && Date.now() - popup.startedAt > POPUP_LIFETIME_MS) return fail("invalid_oauth_state");
+      if (req.query.error === "access_denied") return fail("discord_cancelled");
+
       const code = typeof req.query.code === "string" ? req.query.code : "";
-      if (!code) return res.redirect("/login?error=discord_auth_failed");
+      if (!code) return fail("discord_auth_failed");
 
       try {
         const operator = await authService.completeDiscord({ code });
-        await establishOperator(req, operator, { complete: true });
+        await establishOperator(req, operator, { complete: !popup });
+        if (popup) return finishPopup(req, res, popup);
         return res.redirect("/auth/complete");
       } catch (error) {
         const location = discordFailureLocation(error);
-        if (!location) return next(error);
+        if (!location) {
+          if (!popup) return next(error);
+          logger.error?.("Unhandled Discord popup authentication error");
+          return fail("discord_auth_failed");
+        }
         logger.warn?.("Discord OAuth callback failed", { code: error.code });
-        return res.redirect(location);
+        return fail(location.split("error=")[1]);
       }
+    },
+
+    popupStatus(req, res) {
+      res.set("Cache-Control", "no-store");
+      const popup = req.session.discordPopup;
+      if (!popup || typeof req.query.attempt !== "string" || popup.id !== req.query.attempt) {
+        return res.json({ status: "pending" });
+      }
+      if (Date.now() - popup.startedAt > POPUP_LIFETIME_MS) {
+        return res.json({ status: "error", error: "invalid_oauth_state" });
+      }
+      if (popup.status === "complete") {
+        try {
+          if (req.session.operator?.authMode !== "discord" || sessionRegistry.isRevoked?.(req.sessionID)) {
+            return res.json({ status: "error", error: "access_revoked" });
+          }
+          authService.assertOperatorAdmission?.(req.session.operator);
+        } catch {
+          return res.json({ status: "error", error: "access_revoked" });
+        }
+        return res.json({ status: "complete" });
+      }
+      return res.json({ status: popup.status, ...(popup.error ? { error: popup.error } : {}) });
+    },
+
+    showPopupComplete(req, res) {
+      res.set("Cache-Control", "no-store");
+      if (!["complete", "error"].includes(req.session.discordPopup?.status)) return res.redirect("/login");
+      return res.render("layouts/login", {
+        authMode: "discord", complete: false, authError: null,
+        popupResult: req.session.discordPopup.status,
+      });
     },
 
     showComplete(req, res) {

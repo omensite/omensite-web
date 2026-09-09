@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Keep the project version at `v0.1.1`.
+- Keep the project version at `v0.1.2`.
 - Preserve the existing terminal, CRT, Matrix, glitch, and progressive fragment-navigation design.
 - `AUTH_MODE=demo` is local-only; production must reject demo mode and incomplete Discord configuration.
 - Request only Discord OAuth scopes `identify` and `guilds.members.read`; do not add a bot or bot token.
@@ -1092,7 +1092,7 @@ Use these exact non-secret local values:
 
 ```text
 AUTH_MODE=demo
-SESSION_SECRET=omensite-local-v0-1-1-change-before-hosting
+SESSION_SECRET=omensite-local-v0-1-2-change-before-hosting
 DISCORD_CLIENT_ID=
 DISCORD_CLIENT_SECRET=
 DISCORD_REDIRECT_URI=http://127.0.0.1:4173/auth/discord/callback
@@ -1112,7 +1112,7 @@ Confirm with `git status --short --ignored .env` that Git reports `!! .env`, nev
 
 - [ ] **Step 2: Update `.env.example` and README with exact setup guidance**
 
-Document how to create the Discord application, register the exact callback URI, copy guild/role IDs with Discord Developer Mode, switch `AUTH_MODE`, generate a production session secret, and restart. State that a bot is not required and that users authorize `identify` plus `guilds.members.read`. Explain the temporary-memory reset behavior and the manual TradingView Manage Access step. Preserve the Economicium public API documentation and version `v0.1.1`.
+Document how to create the Discord application, register the exact callback URI, copy guild/role IDs with Discord Developer Mode, switch `AUTH_MODE`, generate a production session secret, and restart. State that a bot is not required and that users authorize `identify` plus `guilds.members.read`. Explain the temporary-memory reset behavior and the manual TradingView Manage Access step. Preserve the Economicium public API documentation and version `v0.1.2`.
 
 - [ ] **Step 3: Make the Windows launcher honor `.env` and verify startup**
 
@@ -1140,7 +1140,7 @@ Expected: every test PASS with zero failures, cancellations, or skipped tests.
 
 Run the app on the `.env` host/port and request `http://127.0.0.1:4173/login`.
 
-Expected: HTTP 200 and the login page identifies `v0.1.1` without printing any environment secret.
+Expected: HTTP 200 and the login page identifies `v0.1.2` without printing any environment secret.
 
 - [ ] **Step 7: Verify the complete desktop interaction path in the in-app browser**
 

@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- Keep package and application version at `v0.1.0`.
+- Keep package and application version at `v0.1.2`.
 - Use the official Trading Economics economic-calendar API; do not scrape Forex Factory, FinancialJuice, X, or another website.
 - Read credentials only from `TRADING_ECONOMICS_API_KEY` on the server.
 - Never expose credentials, raw provider payloads, provider error bodies, or stack traces to browser code.
@@ -47,7 +47,7 @@
 - Modify `tests/unit/app-shell.test.js`: assert route-controller teardown during fragment navigation.
 - Modify `tests/integration/fidelity-markup.test.js`: assert the new calendar geometry hooks.
 - Create `.env.example`: safe credential name documentation.
-- Modify `README.md`: live calendar setup, behavior, licensing, and v0.1.0 feature description.
+- Modify `README.md`: live calendar setup, behavior, licensing, and v0.1.2 feature description.
 
 ---
 
@@ -1081,7 +1081,7 @@ git commit -m "feat: add live calendar interactions"
 **Interfaces:**
 - Consumes: `TRADING_ECONOMICS_API_KEY` from either the process environment or a root `.env` file.
 - Produces: `npm start` and `npm run dev` loading an optional local `.env` through Node.js 24's built-in `--env-file-if-exists` flag.
-- Documents: live-provider setup, safe failure behavior, filter scope, provider licensing responsibility, and v0.1.0 status.
+- Documents: live-provider setup, safe failure behavior, filter scope, provider licensing responsibility, and v0.1.2 status.
 
 - [ ] **Step 1: Add a safe environment example**
 
@@ -1106,20 +1106,20 @@ Update package scripts:
 }
 ```
 
-Leave `test`, `test:watch`, dependencies, Node `>=24`, and version `0.1.0` unchanged. The existing Windows batch launcher will continue to call `npm start`.
+Leave `test`, `test:watch`, dependencies, Node `>=24`, and version `0.1.2` unchanged. The existing Windows batch launcher will continue to call `npm start`.
 
 - [ ] **Step 3: Update the README**
 
 Make these exact content changes:
 
-- Change the v0.1.0 Market News bullet from an interface foundation to a native live economic calendar with high/medium impact and market filters.
+- Change the v0.1.2 Market News bullet from an interface foundation to a native live economic calendar with high/medium impact and market filters.
 - Remove “live market feeds” from the list described as unconnected.
 - Change the Market News route description to “Live current-week high- and medium-impact economic calendar.”
 - Add a “Live market calendar” setup section instructing users to copy `.env.example` to `.env`, replace the sample value with their licensed key, and restart the app.
 - State that missing/invalid credentials leave the terminal interface available with `[ CALENDAR DATA LINK OFFLINE ]`.
 - State that production operators must obtain Trading Economics display/distribution rights appropriate to their deployment.
 - Update the roadmap item from generic live market data to future streaming updates and configurable alert providers.
-- Keep the title, disclaimer, and every version reference at `v0.1.0`.
+- Keep the title, disclaimer, and every version reference at `v0.1.2`.
 
 - [ ] **Step 4: Run focused verification**
 

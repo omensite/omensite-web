@@ -25,7 +25,6 @@ import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 import { LOGIN_ERROR_MESSAGES } from "./models/access.js";
 import { createInMemoryJournalRepository } from "./repositories/in-memory-journal-repository.js";
-import { createProxyAuth } from "./middleware/proxy-auth.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,8 +58,11 @@ export function createApp({
     roleRefreshMs: 300_000,
     discord: null,
   };
-  if (environment === "production" && !["discord", "proxy"].includes(resolvedAuthConfig.mode)) {
-    throw new Error("Discord authentication is required in production unless trusted proxy authentication is configured");
+  if (!["demo", "discord"].includes(resolvedAuthConfig.mode)) {
+    throw new Error("AUTH_MODE must be demo or discord");
+  }
+  if (environment === "production" && resolvedAuthConfig.mode !== "discord") {
+    throw new Error("Discord authentication is required in production");
   }
   const secret = sessionSecret || resolvedAuthConfig.sessionSecret || process.env.SESSION_SECRET;
   if (!secret && environment === "production") {
@@ -131,9 +133,21 @@ export function createApp({
     },
   }));
 
-  if (resolvedAuthConfig.mode === "proxy") {
-    app.use(createProxyAuth({ userRepository, sessionRegistry }));
-  }
+  // A session admitted by a previous authentication mode must sign in again.
+  app.use((req, res, next) => {
+    if (!req.session.operator || req.session.operator.authMode === resolvedAuthConfig.mode) return next();
+    const { id } = req.session.operator;
+    const previousSessionId = req.sessionID;
+    req.session.regenerate((error) => {
+      if (error) return next(error);
+      try {
+        sessionRegistry.unregister(id, previousSessionId);
+      } catch (error) {
+        return next(error);
+      }
+      return next();
+    });
+  });
 
   app.use(fragmentRequest);
   app.get("/health", async (req, res) => {

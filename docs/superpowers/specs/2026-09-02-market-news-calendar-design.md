@@ -1,7 +1,7 @@
 # OMENSITE Market News Calendar Design
 
 **Date:** 2026-09-02  
-**Target version:** v0.1.1
+**Target version:** v0.1.2
 **Status:** Implemented; amended to use a public keyless source
 
 ## Purpose

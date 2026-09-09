@@ -1,6 +1,6 @@
 import { MAX_ROLE_SNAPSHOT_AGE_MS, ROLES } from "../models/access.js";
 
-const AUTH_MODES = new Set(["demo", "discord", "proxy"]);
+const AUTH_MODES = new Set(["demo", "discord"]);
 const DISCORD_KEYS = Object.freeze([
   "DISCORD_CLIENT_ID",
   "DISCORD_CLIENT_SECRET",
@@ -49,10 +49,10 @@ function readDiscordConfig(env) {
 export function readAuthConfig({ env = process.env, nodeEnvironment = process.env.NODE_ENV } = {}) {
   const mode = readValue(env, "AUTH_MODE");
   if (!AUTH_MODES.has(mode)) {
-    throw new Error("AUTH_MODE must be demo, discord, or proxy");
+    throw new Error("AUTH_MODE must be demo or discord");
   }
   if (nodeEnvironment === "production" && mode === "demo") {
-    throw new Error("Discord authentication is required in production unless trusted proxy authentication is configured");
+    throw new Error("Discord authentication is required in production");
   }
 
   const sessionSecret = readValue(env, "SESSION_SECRET");

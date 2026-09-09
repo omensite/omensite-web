@@ -66,16 +66,14 @@ test("configuration rejects unsupported authentication modes", () => {
   assert.throws(() => readAuthConfig({
     env: { AUTH_MODE: "local" },
     nodeEnvironment: "development",
-  }), /AUTH_MODE must be demo, discord, or proxy/);
+  }), /AUTH_MODE must be demo or discord/);
 });
 
-test("production accepts proxy authentication with a session secret", () => {
-  const config = readAuthConfig({
+test("production rejects the former Authentik mode", () => {
+  assert.throws(() => readAuthConfig({
     env: { AUTH_MODE: "proxy", SESSION_SECRET: "proxy-secret", DISCORD_ROLE_REFRESH_MINUTES: "5" },
     nodeEnvironment: "production",
-  });
-  assert.equal(config.mode, "proxy");
-  assert.equal(config.discord, null);
+  }), /AUTH_MODE must be demo or discord/);
 });
 
 test("configuration rejects a nonpositive role refresh interval", () => {

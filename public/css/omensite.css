@@ -192,6 +192,13 @@ button, input, textarea, select {
 .btn-login { margin-top: 8px; letter-spacing: 0.16em; padding: 12px; }
 .login-fineprint { font-size: 10px; color: var(--c-text-faint); }
 .login-err { font-size: 11px; color: var(--c-red); animation: fadeUp 0.2s ease; }
+.login-status { font-size: 10px; line-height: 1.7; letter-spacing: 0.08em; color: var(--c-text-mute); }
+.login-cursor { color: var(--c-green); animation: terminalCursor 1s steps(2, start) infinite; }
+.login-fallback { font-size: 10px; color: var(--c-green); text-decoration: underline; }
+[data-discord-login] { text-align: center; }
+[data-discord-login][aria-disabled="true"] { opacity: 0.5; cursor: wait; }
+@keyframes terminalCursor { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .login-cursor { animation: none; } }
 
 .auth-stream {
   font-size: 12px; line-height: 1.7; min-height: 180px;

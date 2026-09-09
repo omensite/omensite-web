@@ -1,6 +1,6 @@
 # OMENSITE
 
-**Version v0.1.1 — Early Development Preview**
+**Version v0.1.2 — Early Development Preview**
 
 > An AI-assisted trading intelligence platform for execution review, structured journaling, indicator research, trader education, and weekly market context.
 
@@ -18,7 +18,7 @@ The long-term objective is to use AI to examine trade executions alongside the t
 - **Educational content** — Provide structured material for developing market knowledge, execution discipline, and repeatable trading processes.
 - **Weekly market intelligence** — Deliver a focused briefing on meaningful market developments, scheduled events, and conditions that may affect the coming trading week.
 
-## What v0.1.1 includes
+## What v0.1.2 includes
 
 This release establishes OMENSITE's application architecture and core user experience:
 
@@ -26,14 +26,14 @@ This release establishes OMENSITE's application architecture and core user exper
 - Clean, refreshable routes with progressive fragment navigation.
 - Seamless terminal-style page transitions and glitch effects.
 - A cinematic Matrix-inspired login sequence with animated terminal graphics.
-- Mode-aware demonstration and Discord OAuth2 authentication with server-enforced, role-based module access.
+- Direct Discord OAuth2 popup sign-in that preserves the retro terminal, with server-enforced, role-based module access and a same-tab fallback. Demo authentication remains available for local development.
 - A temporary-memory Admin panel for user sessions, bans, roles, and indicator-access decisions.
 - A request-all indicator workflow that records TradingView usernames and consent for manual access grants.
 - A PostgreSQL-backed trade journal with create, list, detail, and shareable-view workflows shared by beta and production.
 - A native live economic calendar with high/medium impact and market filters.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
-AI analysis, brokerage or execution-data imports, PostgreSQL persistence, automated TradingView access grants, and editorial content pipelines are planned capabilities and are not connected in v0.1.1.
+AI analysis, brokerage or execution-data imports, automated TradingView access grants, and editorial content pipelines are planned capabilities and are not connected in v0.1.2.
 
 ## Technology
 
@@ -108,6 +108,10 @@ Discord authentication uses an OAuth2 application and the signed-in member's ser
 5. Generate a long, random production `SESSION_SECRET`, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`, and store it only in the deployment's secret configuration.
 6. Change `AUTH_MODE=discord` and restart the application.
 
+The retro terminal opens Discord sign-in in a separate popup. After Discord confirms the identity and server roles, the popup closes and the original terminal plays its handshake and ACCESS GRANTED animation. If popups are blocked, the terminal offers a same-tab sign-in link. Closing the popup leaves a Cancel / Retry control; unfinished attempts time out after five minutes. Discord controls its own authorization screen.
+
+Popup completion is checked through the server session with an attempt identifier; no access tokens, refresh tokens, or OAuth codes are sent between browser windows. The regular `/auth/discord` redirect and `/auth/discord/callback` remain available, so the registered callback URL does not change.
+
 Users authorize only the `identify` and `guilds.members.read` OAuth2 scopes. OMENSITE rechecks the member's roles every five minutes by default. If Discord cannot confirm membership during a required refresh, access fails closed until the identity can be verified again.
 
 Role behavior is modular:
@@ -122,7 +126,7 @@ Every primary navigation item remains visible. When a user selects a module they
 
 ### Temporary memory and TradingView access
 
-User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.1. Restarting the server clears this operational state. Login sessions and journal records are durable in PostgreSQL; the remaining administrative repositories will move there in a later release.
+User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.2. Restarting the server clears this operational state. Login sessions and journal records are durable in PostgreSQL; the remaining administrative repositories will move there in a later release.
 
 OMENSITE records a request for all active invite-only indicators, including the member's TradingView username and explicit consent. An authorized administrator must still open TradingView's **Manage Access** interface, grant or deny access manually, and then record the matching decision in OMENSITE. The application does not call an undocumented TradingView endpoint or grant access automatically.
 
@@ -158,11 +162,15 @@ npm test
 
 ## Production considerations
 
-Production startup requires `AUTH_MODE=discord` with complete Discord application/guild/role configuration, or `AUTH_MODE=proxy` when the stack is protected by the platform's Authentik forward-auth middleware. It also requires `SESSION_SECRET` and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Proxy mode trusts only the Authentik identity headers supplied on the private container network and grants every admitted beta guild member preview access; it must never be used on a router without forward auth.
+Production startup requires `AUTH_MODE=discord` with complete Discord application/guild/role configuration, `SESSION_SECRET`, and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Authentik proxy authentication has been removed; forwarded identity headers cannot create a session, and existing sessions from the former authentication mode must sign in again. Discord roles now determine access for beta and production alike.
 
 The hosted runtime supplies PostgreSQL for both sessions and journal records. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. The journal API scopes records to the authenticated Discord identity, so a beta write is immediately visible to that identity in production.
 
 This repository includes `Dockerfile`, `compose.hosting.yml`, and `environment.hosting.example` for Portainer GitOps deployments. The beta stack tracks `dev`; the production stack tracks `main`. Run `npm run migrate` only through the production-only migration profile after a verified backup. The runner requires `APP_ENVIRONMENT=production`, `APP_ALLOW_MIGRATIONS=true`, and `DATABASE_URL`; the web service always receives `APP_ALLOW_MIGRATIONS=false`. The public `/health` endpoint reports `503` whenever PostgreSQL is unavailable.
+
+The hosting Compose file fixes `AUTH_MODE=discord` and attaches only the existing `security-headers@file,compression@file` Traefik middleware. Old Portainer `AUTH_MODE=proxy` and `APP_AUTH_MIDDLEWARE` values no longer control this app. Host rules, domains, networks, and HTTPS routing are unchanged.
+
+To switch an existing beta stack, populate all `DISCORD_*` settings listed in `environment.hosting.example` before redeploying the updated `dev` revision. Keep the current site hostname and register `https://<current-site-hostname>/auth/discord/callback` on the Discord application. Ensure admitted members have the OS, Admin, or Developer role before the switch; membership alone no longer grants full preview access. Compose refuses to start with missing Discord settings. If an additional Authentik gate is configured outside this app's router (for example on a shared entrypoint), remove that gate for this app as part of the hosting rollout.
 
 Deployments must use HTTPS, either directly in Node.js or through a trusted reverse proxy, because production session cookies are marked `Secure`. `createApp` trusts one proxy hop by default in production; deployments with a different topology must provide the appropriate `trustProxy` value.
 

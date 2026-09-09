@@ -30,16 +30,25 @@
 | | | | |\/| || _|  | .  |\___ \  | |   | |  |  _|
 | |_| | |  | || |___ | |\ | ___) | | |   | |  | |___
 \___/|_|  |_||_____||_| \_||____/  |_|   |_|  |_____|</pre>
-          <div class="login-sub">OMENSITE TRADING TERMINAL v0.1.1 :: RESTRICTED ACCESS</div>
-          <% if (complete) { %>
+          <div class="login-sub">OMENSITE TRADING TERMINAL v0.1.2 :: RESTRICTED ACCESS</div>
+          <% if (typeof popupResult !== "undefined") { %>
+            <div class="login-form" data-discord-popup-result>
+              <div class="login-prompt">&gt; <%= popupResult === "complete" ? "identity confirmed" : "authentication interrupted" %></div>
+              <div class="login-fineprint">RETURN TO YOUR TERMINAL. THIS WINDOW WILL CLOSE AUTOMATICALLY.</div>
+              <a class="btn btn-primary btn-login" href="/home">[ CONTINUE IN THIS WINDOW ]</a>
+            </div>
+          <% } else if (complete) { %>
             <div data-auth-complete data-redirect-to="/home"></div>
           <% } else if (authMode === "discord") { %>
-            <div class="login-prompt">&gt; authenticate with the authorized Discord server</div>
-            <% if (authError) { %><div class="login-err" role="alert" data-login-page-error><%= authError %></div><% } %>
-            <a class="btn btn-primary btn-login" href="/auth/discord" data-discord-login>[ CONTINUE WITH DISCORD ]</a>
-          <% } else if (authMode === "proxy") { %>
-            <div class="login-prompt">&gt; authenticate through the beta access gateway</div>
-            <a class="btn btn-primary btn-login" href="/" data-proxy-login>[ RETURN TO SSO ]</a>
+            <div class="login-form" data-discord-entry>
+              <div class="login-prompt">&gt; identify yourself through Discord</div>
+              <div class="login-err" role="alert" <%= authError ? "" : "hidden" %> data-login-error<%= authError ? " data-login-page-error" : "" %>><%= authError ?? "" %></div>
+              <a class="btn btn-primary btn-login" href="/auth/discord" data-discord-login>[ SIGN IN WITH DISCORD ]</a>
+              <div class="login-status" role="status" data-discord-status>AWAITING OPERATOR AUTHENTICATION<span class="login-cursor" aria-hidden="true">_</span></div>
+              <button class="btn" type="button" data-discord-cancel hidden>[ CANCEL / RETRY ]</button>
+              <a class="login-fallback" href="/auth/discord" data-discord-fallback hidden>CONTINUE IN THIS TAB &gt;</a>
+              <div class="login-fineprint">DISCORD OPENS IN A SEPARATE WINDOW. YOUR TERMINAL STAYS HERE.</div>
+            </div>
           <% } else { %>
             <form class="login-form" action="/auth/login" method="post" novalidate data-login-form>
               <div class="login-prompt">&gt; identify yourself to continue</div>

@@ -1,7 +1,7 @@
 # OMENSITE Discord RBAC and Indicator Access Design
 
 **Date:** 2026-09-02
-**Target version:** v0.1.1
+**Target version:** v0.1.2
 **Status:** Approved for implementation planning
 
 ## Purpose
