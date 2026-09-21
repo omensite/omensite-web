@@ -4,8 +4,8 @@ function adminError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
-function safeUserSnapshot(user, { banRepository, sessionRegistry }) {
-  const ban = banRepository.findByUserId(user.id);
+async function safeUserSnapshot(user, { banRepository, sessionRegistry }) {
+  const [ban, activeSessions] = await Promise.all([banRepository.findByUserId(user.id), sessionRegistry.activeCount(user.id)]);
   return {
     id: String(user.id),
     username: user.username ?? "",
@@ -24,7 +24,7 @@ function safeUserSnapshot(user, { banRepository, sessionRegistry }) {
       reason: ban.reason ?? "",
       bannedAt: ban.bannedAt,
     } : null,
-    activeSessions: sessionRegistry.activeCount(user.id),
+    activeSessions,
   };
 }
 
@@ -45,40 +45,44 @@ export function createAdminService({
 
   async function invalidateSessions(userId) {
     const normalizedUserId = String(userId);
-    const sessionIds = sessionRegistry.listSessionIds(normalizedUserId);
-    sessionIds.forEach((sessionId) => sessionRegistry.markRevoked?.(sessionId));
+    const sessionIds = await sessionRegistry.listSessionIds(normalizedUserId);
+    await Promise.all(sessionIds.map((sessionId) => sessionRegistry.markRevoked?.(sessionId)));
     const outcomes = await Promise.allSettled(sessionIds.map((sessionId) => new Promise((resolve, reject) => {
       sessionStore.destroy(sessionId, (error) => error ? reject(error) : resolve(sessionId));
     })));
 
     let failed = false;
-    outcomes.forEach((outcome, index) => {
+    for (const [index, outcome] of outcomes.entries()) {
       if (outcome.status === "fulfilled") {
-        sessionRegistry.unregister(normalizedUserId, sessionIds[index]);
+        await sessionRegistry.unregister(normalizedUserId, sessionIds[index]);
       } else {
         failed = true;
       }
-    });
+    }
     if (failed) {
       throw adminError("SESSION_INVALIDATION_FAILED", "One or more sessions could not be invalidated");
     }
     return sessionIds.length;
   }
 
-  function admittedActor({ actor, actorId }) {
+  async function admittedActor({ actor, actorId }) {
     const normalizedActorId = String(actor?.id ?? actorId);
-    if (banRepository.isBanned(normalizedActorId)) {
+    if (await banRepository.isBanned(normalizedActorId)) {
       throw adminError("ACCOUNT_BANNED", "Administrator account is banned");
     }
-    if (actor) assertOperatorAdmission(actor);
+    if (actor) await assertOperatorAdmission(actor);
     return normalizedActorId;
   }
 
   return {
-    getDashboard() {
+    async getDashboard() {
+      const [users, requests] = await Promise.all([userRepository.list(), requestRepository.list()]);
+      const repositories = [userRepository, banRepository, sessionRegistry, requestRepository];
+      const persistent = repositories.every((repository) => repository.getStorageStatus?.().persistent === true);
       return {
-        users: userRepository.list().map((user) => safeUserSnapshot(user, { banRepository, sessionRegistry })),
-        requests: requestRepository.list().map((request) => ({
+        storage: { kind: persistent ? "postgres" : "memory", persistent },
+        users: await Promise.all(users.map((user) => safeUserSnapshot(user, { banRepository, sessionRegistry }))),
+        requests: requests.map((request) => ({
           ...request,
           indicators: request.indicatorIds.map((id) => indicatorsById.get(id) ?? {
             id,
@@ -90,7 +94,7 @@ export function createAdminService({
     },
 
     async signOutUser({ userId, actor, actorId }) {
-      admittedActor({ actor, actorId });
+      await admittedActor({ actor, actorId });
       const normalizedUserId = String(userId);
       const signedOutSessions = await invalidateSessions(normalizedUserId);
       return { userId: normalizedUserId, signedOutSessions };
@@ -98,11 +102,11 @@ export function createAdminService({
 
     async banUser({ userId, actor, actorId, reason = "" }) {
       const normalizedUserId = String(userId);
-      const normalizedActorId = admittedActor({ actor, actorId });
+      const normalizedActorId = await admittedActor({ actor, actorId });
       if (normalizedUserId === normalizedActorId) {
         throw adminError("SELF_BAN_FORBIDDEN", "Administrators cannot ban their own identity");
       }
-      const ban = banRepository.ban({
+      const ban = await banRepository.ban({
         userId: normalizedUserId,
         actorId: normalizedActorId,
         reason: String(reason).trim(),
@@ -111,19 +115,19 @@ export function createAdminService({
       return { ...ban, banned: true };
     },
 
-    unbanUser({ userId, actor, actorId }) {
-      admittedActor({ actor, actorId });
+    async unbanUser({ userId, actor, actorId }) {
+      await admittedActor({ actor, actorId });
       const normalizedUserId = String(userId);
-      banRepository.unban({ userId: normalizedUserId });
+      await banRepository.unban({ userId: normalizedUserId });
       return { userId: normalizedUserId, banned: false };
     },
 
-    decideIndicatorRequest({ userId, actor, actorId, status }) {
-      const normalizedActorId = admittedActor({ actor, actorId });
+    async decideIndicatorRequest({ userId, actor, actorId, status }) {
+      const normalizedActorId = await admittedActor({ actor, actorId });
       if (status !== "GRANTED" && status !== "DENIED") {
         throw adminError("INVALID_DECISION", "Invalid indicator request decision");
       }
-      const existing = requestRepository.findByUserId(String(userId));
+      const existing = await requestRepository.findByUserId(String(userId));
       if (existing && existing.status !== "PENDING") {
         throw adminError("INDICATOR_REQUEST_NOT_PENDING", "Indicator request is not pending");
       }

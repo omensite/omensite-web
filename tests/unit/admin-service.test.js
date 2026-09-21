@@ -141,7 +141,7 @@ test("session invalidation attempts every session and unregisters only successfu
   assert.deepEqual(sessionRegistry.listSessionIds("42"), ["sid-b"]);
 });
 
-test("dashboard exposes only safe user fields with ban and session state and newest requests first", () => {
+test("dashboard exposes only safe user fields with ban and session state and newest requests first", async () => {
   const { service, userRepository, banRepository, sessionRegistry, requestRepository } = createAdminServiceHarness();
   userRepository.upsert({
     id: "42", username: "member", displayName: "Member", avatarUrl: null,
@@ -156,7 +156,7 @@ test("dashboard exposes only safe user fields with ban and session state and new
     indicatorIds: ["demo-market-structure"],
   });
 
-  const dashboard = service.getDashboard();
+  const dashboard = await service.getDashboard();
 
   assert.equal(dashboard.users.length, 1);
   assert.equal(dashboard.users[0].banned, true);
@@ -172,7 +172,7 @@ test("dashboard exposes only safe user fields with ban and session state and new
   });
 });
 
-test("dashboard request audit includes only sanitized publication descriptors", () => {
+test("dashboard request audit includes only sanitized publication descriptors", async () => {
   const catalog = Object.freeze([
     Object.freeze({ id: "safe", name: "SAFE SCRIPT", active: true, tradingViewUrl: "https://www.tradingview.com/script/safe/" }),
     Object.freeze({ id: "unsafe", name: "UNSAFE SCRIPT", active: true, tradingViewUrl: "javascript:alert(1)" }),
@@ -185,7 +185,7 @@ test("dashboard request audit includes only sanitized publication descriptors", 
   });
   requestRepository.decide({ userId: "42", status: "GRANTED", actorId: "7" });
 
-  const [request] = service.getDashboard().requests;
+  const [request] = (await service.getDashboard()).requests;
 
   assert.deepEqual(request.indicators, [
     { id: "safe", name: "SAFE SCRIPT", tradingViewUrl: "https://www.tradingview.com/script/safe/" },
@@ -198,20 +198,20 @@ test("dashboard request audit includes only sanitized publication descriptors", 
   assert.equal(request.decidedAt, "2026-09-02T12:00:00.000Z");
 });
 
-test("indicator decisions are delegated to repository validation", () => {
+test("indicator decisions are delegated to repository validation", async () => {
   const { service, requestRepository } = createAdminServiceHarness();
   requestRepository.upsertPending({
     userId: "42", discordUsername: "member", tradingViewUsername: "member_tv",
     indicatorIds: ["demo-market-structure"],
   });
 
-  assert.equal(service.decideIndicatorRequest({ userId: "42", actorId: "7", status: "GRANTED" }).status, "GRANTED");
-  assert.throws(
+  assert.equal((await service.decideIndicatorRequest({ userId: "42", actorId: "7", status: "GRANTED" })).status, "GRANTED");
+  await assert.rejects(
     () => service.decideIndicatorRequest({ userId: "42", actorId: "8", status: "DENIED" }),
     { code: "INDICATOR_REQUEST_NOT_PENDING" },
   );
   assert.equal(requestRepository.findByUserId("42").status, "GRANTED");
-  assert.throws(
+  await assert.rejects(
     () => service.decideIndicatorRequest({ userId: "42", actorId: "7", status: "PENDING" }),
     { code: "INVALID_DECISION" },
   );

@@ -29,12 +29,12 @@ function requestHarness(overrides = {}) {
   };
 }
 
-test("show renders the Admin dashboard through the MVC page model", () => {
+test("show renders the Admin dashboard through the MVC page model", async () => {
   const dashboard = { users: [{ id: "42" }], requests: [{ userId: "42" }] };
   const controller = createAdminController({ adminService: { getDashboard: () => dashboard } });
   const response = responseHarness();
 
-  controller.show(requestHarness(), response);
+  await controller.show(requestHarness(), response);
 
   assert.equal(response.rendered.view, "pages/admin");
   assert.equal(response.rendered.data.page.route.key, "admin");

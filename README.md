@@ -27,7 +27,7 @@ This release establishes OMENSITE's application architecture and core user exper
 - Seamless terminal-style page transitions and glitch effects.
 - A cinematic Matrix-inspired login sequence with animated terminal graphics.
 - Discord-only OAuth2 popup sign-in that preserves the retro terminal, with server-enforced, role-based module access and a same-tab fallback in every environment.
-- A temporary-memory Admin panel for user sessions, bans, roles, and indicator-access decisions.
+- A PostgreSQL-backed Admin panel for user sessions, bans, roles, and indicator-access decisions.
 - A request-all indicator workflow that records TradingView usernames and consent for manual access grants.
 - A PostgreSQL-backed trade journal with create, list, detail, and shareable-view workflows shared by beta and production.
 - A native live economic calendar with high/medium impact and market filters.
@@ -148,9 +148,9 @@ Role behavior is modular:
 
 Every primary navigation item remains visible. When a user selects a module they cannot access, the existing terminal transition reports `ACCESS FAILED :: INSUFFICIENT PERMISSIONS` and returns them to the current page.
 
-### Temporary memory and TradingView access
+### Saved access records and TradingView access
 
-User snapshots, bans, session indexes, and indicator requests are stored in process memory for v0.1.2. Restarting the server clears this operational state. Login sessions and journal records are durable in PostgreSQL; the remaining administrative repositories will move there in a later release.
+When `DATABASE_URL` is configured, user snapshots, bans, indicator requests and decisions, login sessions and revocations, journal entries, and Brain records are saved in PostgreSQL. Admin displays `POSTGRESQL CONNECTED` only when all its repositories use persistent storage. Development without a database still displays `TEMPORARY MEMORY MODE` for its in-memory Admin repositories. Valid sessions from before the storage migration populate their user snapshot on the next protected request.
 
 OMENSITE records a request for all active invite-only indicators, including the member's TradingView username and explicit consent. An authorized administrator must still open TradingView's **Manage Access** interface, grant or deny access manually, and then record the matching decision in OMENSITE. The application does not call an undocumented TradingView endpoint or grant access automatically.
 
@@ -171,7 +171,7 @@ OMENSITE records a request for all active invite-only indicators, including the 
 - `/journal` — Trade journal
 - `/journal/new` — New journal entry
 - `/journal/:id` — Public journal record
-- `/admin` — Temporary-memory user and indicator-request administration
+- `/admin` — User, session, ban, and indicator-request administration
 
 ## Testing
 
@@ -181,21 +181,22 @@ Run the complete automated test suite with:
 npm test
 ```
 
+The real PostgreSQL persistence test is opt-in. Set `TEST_DATABASE_URL` to a disposable test database, then run `npm test`. It applies all migrations and verifies durable records, concurrent decisions, session revocation, and authenticated reads after replacing the app runtime. It never uses the application's `DATABASE_URL` or calls a paid AI provider.
+
 ## Roadmap
 
-1. Durable Discord user, ban, session-index, and indicator-request persistence.
-2. Trade-execution ingestion from supported brokers or structured imports.
-3. AI-assisted post-trade analysis and pattern detection.
-4. Production indicator, educational-content, and weekly market-intelligence libraries.
-5. Future streaming updates and configurable alert providers.
+1. Trade-execution ingestion from supported brokers or structured imports.
+2. AI-assisted post-trade analysis and pattern detection.
+3. Production indicator, educational-content, and weekly market-intelligence libraries.
+4. Future streaming updates and configurable alert providers.
 
 ## Production considerations
 
 Production startup requires `AUTH_MODE=discord` with complete Discord application/guild configuration, the role IDs when using the default roles policy, `SESSION_SECRET`, and a durable `express-session` store. The in-memory store is reserved for local development and automated tests. Authentik proxy authentication has been removed; forwarded identity headers cannot create a session, and existing sessions from the former authentication mode must sign in again. The explicit beta-guild policy preserves existing beta guild preview access; other deployments use Discord roles.
 
-The hosted runtime supplies PostgreSQL for both sessions and journal records. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. The journal API scopes records to the authenticated Discord identity, so a beta write is immediately visible to that identity in production.
+The hosted runtime supplies PostgreSQL for sessions, Admin records, journals, and Brain runs, documents, memory, and cache. Beta and production must receive the same `DATABASE_URL` and separate `SESSION_SECRET` values. Records belong to Discord identities, so shared-database deployments also share journal records, bans, and indicator decisions once both run this version. Revoked session IDs remain recorded to prevent a late concurrent session save from restoring access.
 
-This repository includes `Dockerfile`, `compose.hosting.yml`, and `environment.hosting.example` for Portainer GitOps deployments. The beta stack tracks `dev`; the production stack tracks `main`. Run `npm run migrate` only through the production-only migration profile after a verified backup. The runner requires `APP_ENVIRONMENT=production`, `APP_ALLOW_MIGRATIONS=true`, and `DATABASE_URL`; the web service always receives `APP_ALLOW_MIGRATIONS=false`. The public `/health` endpoint reports `503` whenever PostgreSQL is unavailable.
+This repository includes `Dockerfile`, `compose.hosting.yml`, and `environment.hosting.example` for Portainer GitOps deployments. The beta stack tracks `dev`; the production stack tracks `main`. Run `npm run migrate` only through the production-only migration profile after a verified backup. The runner requires `APP_ENVIRONMENT=production`, `APP_ALLOW_MIGRATIONS=true`, and `DATABASE_URL`; the web service always receives `APP_ALLOW_MIGRATIONS=false`. The runner applies migrations 001 (sessions/journal), 002 (Brain), and 003 (Admin) together in a transaction and can be rerun. Apply them before deploying this version: `/health` reports `503` if the database is unavailable or any required table is missing. Connecting a database alone does not create the schema.
 
 The hosting Compose file fixes `AUTH_MODE=discord` and attaches only the existing `security-headers@file,compression@file` Traefik middleware. Old Portainer `AUTH_MODE=proxy` and `APP_AUTH_MIDDLEWARE` values no longer control this app. Host rules, domains, networks, and HTTPS routing are unchanged.
 

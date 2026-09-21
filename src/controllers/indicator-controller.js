@@ -31,8 +31,8 @@ function catalogForRendering(catalog) {
 
 export function createIndicatorController({ indicatorAccessService }) {
   return {
-    show(req, res) {
-      const memberView = indicatorAccessService.getMemberView(req.session.operator.id);
+    async show(req, res) {
+      const memberView = await indicatorAccessService.getMemberView(req.session.operator.id);
       const notice = req.session.indicatorNotice ?? null;
       if (notice) delete req.session.indicatorNotice;
       return renderPage(req, res, buildPageViewModel(ROUTE_BY_KEY.indicators, {
@@ -41,9 +41,9 @@ export function createIndicatorController({ indicatorAccessService }) {
       }));
     },
 
-    requestAll(req, res, next) {
+    async requestAll(req, res, next) {
       try {
-        const request = indicatorAccessService.requestAll({
+        const request = await indicatorAccessService.requestAll({
           operator: req.session.operator,
           tradingViewUsername: req.body?.tradingViewUsername,
           consent: req.body?.consent === true || req.body?.consent === "true",

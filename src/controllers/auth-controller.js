@@ -45,10 +45,10 @@ export function createAuthController({ authService, sessionRegistry, logger = co
     const previousSessionId = req.sessionID;
     await regenerateSession(req);
     if (previousOperator?.id) {
-      sessionRegistry.unregister(previousOperator.id, previousSessionId);
+      await sessionRegistry.unregister(previousOperator.id, previousSessionId);
     }
     try {
-      authService.assertOperatorAdmission?.(operator);
+      await authService.assertOperatorAdmission?.(operator);
     } catch (error) {
       try {
         // Retain an empty session so popup failures can reach the waiting terminal.
@@ -61,7 +61,7 @@ export function createAuthController({ authService, sessionRegistry, logger = co
     req.session.operator = operator;
     req.session.authComplete = complete;
     ensureCsrfToken(req);
-    sessionRegistry.register(operator.id, req.sessionID);
+    await sessionRegistry.register(operator.id, req.sessionID);
   }
 
   return {
@@ -115,7 +115,7 @@ export function createAuthController({ authService, sessionRegistry, logger = co
       }
     },
 
-    popupStatus(req, res) {
+    async popupStatus(req, res) {
       res.set("Cache-Control", "no-store");
       const popup = req.session.discordPopup;
       if (!popup || typeof req.query.attempt !== "string" || popup.id !== req.query.attempt) {
@@ -126,10 +126,10 @@ export function createAuthController({ authService, sessionRegistry, logger = co
       }
       if (popup.status === "complete") {
         try {
-          if (req.session.operator?.authMode !== "discord" || sessionRegistry.isRevoked?.(req.sessionID)) {
+          if (req.session.operator?.authMode !== "discord" || await sessionRegistry.isRevoked?.(req.sessionID)) {
             return res.json({ status: "error", error: "access_revoked" });
           }
-          authService.assertOperatorAdmission?.(req.session.operator);
+          await authService.assertOperatorAdmission?.(req.session.operator);
         } catch {
           return res.json({ status: "error", error: "access_revoked" });
         }
@@ -159,7 +159,7 @@ export function createAuthController({ authService, sessionRegistry, logger = co
       const sessionId = req.sessionID;
       try {
         try {
-          sessionRegistry.markRevoked?.(sessionId);
+          await sessionRegistry.markRevoked?.(sessionId);
         } catch {
           // Cookie clearing and session destruction remain authoritative.
         }
@@ -172,7 +172,7 @@ export function createAuthController({ authService, sessionRegistry, logger = co
         }
         await destroySession(req);
         try {
-          if (operator?.id) sessionRegistry.unregister(operator.id, sessionId);
+          if (operator?.id) await sessionRegistry.unregister(operator.id, sessionId);
         } catch {
           // The backing session is already gone.
         }

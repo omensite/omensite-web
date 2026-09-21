@@ -107,10 +107,10 @@ test("request all rejects a catalog without active indicators", () => {
   );
 });
 
-test("member view reports not requested without inventing a repository record", () => {
+test("member view reports not requested without inventing a repository record", async () => {
   const { service, requestRepository } = createIndicatorHarness();
 
-  const view = service.getMemberView("42");
+  const view = await service.getMemberView("42");
 
   assert.equal(view.status, "NOT_REQUESTED");
   assert.equal(view.request, null);

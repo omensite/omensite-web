@@ -3,8 +3,13 @@
   <%- include("../partials/route-head", { page }) %>
 
   <div class="admin-memory-warning" role="status">
-    <span class="blip">[ TEMPORARY MEMORY MODE ]</span>
-    <span>USERS, BANS, SESSIONS, AND REQUEST DECISIONS RESET WHEN THIS PROCESS RESTARTS.</span>
+    <% if (page.data.storage?.persistent) { %>
+      <span class="blip">[ POSTGRESQL CONNECTED ]</span>
+      <span>USERS, BANS, SESSIONS, AND REQUEST DECISIONS ARE SAVED IN THE DATABASE.</span>
+    <% } else { %>
+      <span class="blip">[ TEMPORARY MEMORY MODE ]</span>
+      <span>ADMIN RECORDS USE TEMPORARY STORAGE AND MAY RESET WHEN THIS PROCESS RESTARTS.</span>
+    <% } %>
   </div>
 
   <section class="admin-rail" aria-labelledby="admin-users-heading" data-admin-users>

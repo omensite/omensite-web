@@ -47,13 +47,13 @@ export function createAuthService({
     };
   }
 
-  function persistSafeSnapshot(operator) {
+  async function persistSafeSnapshot(operator) {
     const { discordAuth: _discordAuth, ...snapshot } = operator;
-    userRepository.upsert(snapshot);
+    await userRepository.upsert(snapshot);
   }
 
-  function rejectIfBanned(id) {
-    if (banRepository.isBanned(id)) {
+  async function rejectIfBanned(id) {
+    if (await banRepository.isBanned(id)) {
       throw createAuthError(ACCESS_ERRORS.ACCOUNT_BANNED, "This account is not permitted to sign in");
     }
   }
@@ -64,11 +64,11 @@ export function createAuthService({
     }
   }
 
-  function assertOperatorAdmission(operator) {
+  async function assertOperatorAdmission(operator) {
     if (operator?.authMode !== "discord") {
       throw createAuthError("ACCESS_REVOKED", "Sign in through Discord to continue");
     }
-    rejectIfBanned(operator.id);
+    await rejectIfBanned(operator.id);
     rejectIfNoBaseAccess(operator);
     return operator;
   }
@@ -92,7 +92,7 @@ export function createAuthService({
       discordProvider.getCurrentUser({ accessToken: discordAuth.accessToken }),
       discordProvider.getCurrentGuildMember({ accessToken: discordAuth.accessToken }),
     ]);
-    rejectIfBanned(identity.id);
+    await rejectIfBanned(identity.id);
 
     const access = discordAccess(member);
     rejectIfNoBaseAccess(access);
@@ -106,7 +106,7 @@ export function createAuthService({
       lastSignedInAt: signedInAt,
       discordAuth,
     });
-    persistSafeSnapshot(operator);
+    await persistSafeSnapshot(operator);
     return operator;
   }
 
@@ -114,7 +114,7 @@ export function createAuthService({
     if (operator?.authMode !== "discord") {
       throw createAuthError("ACCESS_REVOKED", "Sign in through Discord to continue");
     }
-    rejectIfBanned(operator.id);
+    await rejectIfBanned(operator.id);
     let discordAuth = operator.discordAuth;
     if (isExpired(discordAuth?.expiresAt, now)) {
       discordAuth = await discordProvider.refreshAccessToken({ refreshToken: discordAuth.refreshToken });
@@ -136,7 +136,7 @@ export function createAuthService({
       lastSignedInAt: operator.lastSignedInAt,
       discordAuth,
     });
-    persistSafeSnapshot(refreshed);
+    await persistSafeSnapshot(refreshed);
     return refreshed;
   }
 

@@ -11,8 +11,8 @@ export function createIndicatorAccessService({ catalog, requestRepository, now =
   }
 
   return {
-    getMemberView(userId) {
-      const request = requestRepository.findByUserId(userId);
+    async getMemberView(userId) {
+      const request = await requestRepository.findByUserId(userId);
       return {
         catalog,
         request,

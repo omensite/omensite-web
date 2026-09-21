@@ -33,8 +33,8 @@ function isStandardForm(req) {
   return Boolean(req.is?.("application/x-www-form-urlencoded"));
 }
 
-function findUser(adminService, userId) {
-  return adminService.getDashboard().users.find((user) => user.id === String(userId)) ?? {
+async function findUser(adminService, userId) {
+  return (await adminService.getDashboard()).users.find((user) => user.id === String(userId)) ?? {
     id: String(userId),
   };
 }
@@ -51,10 +51,10 @@ function handleError(error, res, next) {
 
 export function createAdminController({ adminService }) {
   return {
-    show(req, res) {
+    async show(req, res) {
       return renderPage(req, res, buildPageViewModel(ROUTE_BY_KEY.admin, {
         operator: req.session.operator,
-        data: adminService.getDashboard(),
+        data: await adminService.getDashboard(),
       }));
     },
 
@@ -68,7 +68,7 @@ export function createAdminController({ adminService }) {
         const selfSignedOut = String(userId) === String(actorId);
         return res.json({
           ok: true,
-          user: findUser(adminService, userId),
+          user: await findUser(adminService, userId),
           selfSignedOut,
           ...(selfSignedOut ? { redirectTo: "/login" } : {}),
         });
@@ -86,7 +86,7 @@ export function createAdminController({ adminService }) {
         if (isStandardForm(req)) return res.redirect(303, "/admin");
         return res.json({
           ok: true,
-          user: findUser(adminService, userId),
+          user: await findUser(adminService, userId),
           selfSignedOut: false,
         });
       } catch (error) {
@@ -103,7 +103,7 @@ export function createAdminController({ adminService }) {
           actorId: req.session.operator.id,
         });
         if (isStandardForm(req)) return res.redirect(303, "/admin");
-        return res.json({ ok: true, user: findUser(adminService, userId), selfSignedOut: false });
+        return res.json({ ok: true, user: await findUser(adminService, userId), selfSignedOut: false });
       } catch (error) {
         return handleError(error, res, next);
       }
@@ -111,7 +111,7 @@ export function createAdminController({ adminService }) {
 
     async decideIndicatorRequest(req, res, next) {
       try {
-        const request = adminService.decideIndicatorRequest({
+        const request = await adminService.decideIndicatorRequest({
           userId: req.params.userId,
           actor: req.session.operator,
           actorId: req.session.operator.id,

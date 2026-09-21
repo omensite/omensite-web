@@ -3,6 +3,7 @@ import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
 import { createPostgresJournalRepository } from "../repositories/postgres-journal-repository.js";
 import { createPostgresBrainRepository } from "../agent-brain/brain-repository.js";
+import { createPostgresUserRepository, createPostgresBanRepository, createPostgresIndicatorRequestRepository, createPostgresSessionRegistry } from "../repositories/postgres-admin-repositories.js";
 
 export function createPostgresRuntime(databaseConfig) {
   if (!databaseConfig?.configured) throw new Error("PostgreSQL runtime requires a configured database");
@@ -23,12 +24,20 @@ export function createPostgresRuntime(databaseConfig) {
   return {
     pool,
     sessionStore,
+    userRepository: createPostgresUserRepository(pool),
+    banRepository: createPostgresBanRepository(pool),
+    indicatorRequestRepository: createPostgresIndicatorRequestRepository(pool),
+    sessionRegistry: createPostgresSessionRegistry(pool),
     journalRepository: createPostgresJournalRepository(pool),
     brainRepository: createPostgresBrainRepository(pool),
     readinessCheck: async () => {
-      const result = await pool.query("SELECT 1 AS ready");
-      return result.rows[0]?.ready === 1;
+      const required = ["user_sessions", "journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "app_users", "app_bans", "indicator_requests", "revoked_user_sessions"];
+      const result = await pool.query("SELECT bool_and(to_regclass('public.' || name) IS NOT NULL) AS ready FROM unnest($1::text[]) AS tables(name)", [required]);
+      return result.rows[0]?.ready === true;
     },
-    close: () => pool.end(),
+    close: async () => {
+      await sessionStore.close();
+      await pool.end();
+    },
   };
 }

@@ -60,7 +60,7 @@ test("non-Discord operators cannot pass admission or be converted by refresh", a
   });
   for (const authMode of ["demo", "proxy", "local", undefined]) {
     const operator = { id: "old-identity", authMode, roles: ["Developer"], capabilities: ["base", "admin"] };
-    assert.throws(() => service.assertOperatorAdmission(operator), { code: "ACCESS_REVOKED" });
+    await assert.rejects(() => service.assertOperatorAdmission(operator), { code: "ACCESS_REVOKED" });
     await assert.rejects(() => service.refreshOperator(operator), { code: "ACCESS_REVOKED" });
   }
   assert.equal(providerCalls, 0);
@@ -228,7 +228,7 @@ test("refresh replaces roles and capabilities from Discord membership", async ()
   assert.equal(persisted.lastSignedInAt, "2026-09-01T15:30:00.000Z");
 });
 
-test("final admission synchronously rechecks bans and base access", async () => {
+test("final admission awaits and rechecks bans and base access", async () => {
   let banned = false;
   const service = createAuthService({
     rolePolicy,
@@ -236,11 +236,11 @@ test("final admission synchronously rechecks bans and base access", async () => 
   });
   const operator = { id: "late-ban", authMode: "discord", roles: ["OS"], capabilities: ["base"] };
 
-  assert.equal(service.assertOperatorAdmission(operator), operator);
+  assert.equal(await service.assertOperatorAdmission(operator), operator);
   banned = true;
-  assert.throws(() => service.assertOperatorAdmission(operator), { code: "ACCOUNT_BANNED" });
+  await assert.rejects(() => service.assertOperatorAdmission(operator), { code: "ACCOUNT_BANNED" });
   banned = false;
-  assert.throws(
+  await assert.rejects(
     () => service.assertOperatorAdmission({ ...operator, capabilities: ["indicators"] }),
     { code: "ACCESS_REVOKED" },
   );

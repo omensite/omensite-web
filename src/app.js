@@ -181,10 +181,10 @@ export function createApp({
     if (!req.session.operator || req.session.operator.authMode === resolvedAuthConfig.mode) return next();
     const { id } = req.session.operator;
     const previousSessionId = req.sessionID;
-    req.session.regenerate((error) => {
+    req.session.regenerate(async (error) => {
       if (error) return next(error);
       try {
-        sessionRegistry.unregister(id, previousSessionId);
+        await sessionRegistry.unregister(id, previousSessionId);
       } catch (error) {
         return next(error);
       }
@@ -223,6 +223,17 @@ export function createApp({
   }));
   configureRoutes?.(app);
   app.use(requireAuth, refreshRoles);
+  // Populate durable identity records for valid sessions created before the storage migration.
+  app.use(async (req, res, next) => {
+    if (userRepository.getStorageStatus?.().persistent && req.session.operator) {
+      const operator = req.session.operator;
+      if (!await userRepository.findById(operator.id)) {
+        const { discordAuth: _credentials, ...snapshot } = operator;
+        await userRepository.upsert({ ...snapshot, firstSeenAt: operator.lastSignedInAt });
+      }
+    }
+    next();
+  });
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));
   app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));

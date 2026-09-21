@@ -5,6 +5,9 @@
 !.env.example
 node_modules
 npm-debug.log*
+data
+*.sqlite*
+*.log
 Dockerfile*
 compose*.yml
 README.md

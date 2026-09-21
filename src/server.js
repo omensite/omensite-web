@@ -17,6 +17,10 @@ const app = createApp({
   brainRepository,
   ...(postgresRuntime ? {
     sessionStore: postgresRuntime.sessionStore,
+    userRepository: postgresRuntime.userRepository,
+    banRepository: postgresRuntime.banRepository,
+    indicatorRequestRepository: postgresRuntime.indicatorRequestRepository,
+    sessionRegistry: postgresRuntime.sessionRegistry,
     journalRepository: postgresRuntime.journalRepository,
     readinessCheck: postgresRuntime.readinessCheck,
   } : {}),

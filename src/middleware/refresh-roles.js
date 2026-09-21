@@ -46,7 +46,7 @@ export function createRefreshRoles({
     async function rejectOperator(error) {
       const loginUrl = `/login?error=${loginErrorFor(error)}`;
       try {
-        sessionRegistry.markRevoked?.(req.sessionID);
+        await sessionRegistry.markRevoked?.(req.sessionID);
       } catch {
         // Cookie clearing and the live admission check remain authoritative.
       }
@@ -55,7 +55,7 @@ export function createRefreshRoles({
       try {
         await destroySession(req.session);
         try {
-          sessionRegistry.unregister(operator.id, req.sessionID);
+          await sessionRegistry.unregister(operator.id, req.sessionID);
         } catch {
           // The backing session is already gone.
         }
@@ -70,8 +70,8 @@ export function createRefreshRoles({
     }
 
     try {
-      authService.assertOperatorAdmission?.(operator);
-      if (sessionRegistry.isRevoked?.(req.sessionID)) {
+      await authService.assertOperatorAdmission?.(operator);
+      if (await sessionRegistry.isRevoked?.(req.sessionID)) {
         throw accessError("ACCESS_REVOKED");
       }
     } catch (error) {
@@ -84,8 +84,8 @@ export function createRefreshRoles({
 
     try {
       const refreshedOperator = await authService.refreshOperator(operator);
-      authService.assertOperatorAdmission?.(refreshedOperator);
-      if (sessionRegistry.isRevoked?.(req.sessionID)) {
+      await authService.assertOperatorAdmission?.(refreshedOperator);
+      if (await sessionRegistry.isRevoked?.(req.sessionID)) {
         throw accessError("ACCESS_REVOKED");
       }
       req.session.operator = refreshedOperator;
