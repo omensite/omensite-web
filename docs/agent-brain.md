@@ -51,7 +51,7 @@ The panel distinguishes working offline components from pending setup: credentia
 
 Local startup creates `data/agent-brain.sqlite`, including its parent directory. Override with `BRAIN_DB_PATH`. The database and its sidecars are ignored by Git. Automated tests use isolated in-memory or temporary repositories.
 
-When `DATABASE_URL` is configured, startup uses PostgreSQL. The guarded migration runner includes `migrations/002_agent_brain.sql`; apply it through the existing reviewed production migration process before deploying this feature. This development task does not apply migrations. PostgreSQL tests exercise SQL behavior with a fake pool; live deployment remains to be verified.
+When `DATABASE_URL` is configured, startup uses PostgreSQL. The guarded migration runner includes `migrations/002_agent_brain.sql` alongside the session/journal and Admin migrations; apply all migrations through the production migration process after a verified backup and before deploying. Readiness checks require every application table. Set `TEST_DATABASE_URL` to a disposable database to run the real PostgreSQL integration test, which verifies saved Brain, journal, Admin, and session state across fresh app runtimes without paid AI calls.
 
 Optional pricing variables use the prefixes `BRAIN_GEMINI`, `BRAIN_OPENAI`, and `BRAIN_CLAUDE`, followed by:
 
