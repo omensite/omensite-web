@@ -20,10 +20,10 @@ test("unknown paths return undefined", () => {
 
 test("visible navigation contains every primary destination including Admin", () => {
   assert.deepEqual(NAVIGATION.map((route) => route.key), [
-    "home", "indicators", "market-news", "alerts-ict", "alerts-sr", "journal", "admin",
+    "home", "trader", "brain", "indicators", "market-news", "alerts-ict", "alerts-sr", "journal", "admin",
   ]);
   assert.deepEqual(NAVIGATION.map((route) => route.capability), [
-    "base", "indicators", "base", "base", "base", "journal", "admin",
+    "base", "base", "base", "indicators", "base", "base", "base", "journal", "admin",
   ]);
   assert.equal(ROUTE_BY_KEY["journal-new"].view, "journal-new");
   assert.equal(ROUTE_BY_KEY["journal-public"].view, "journal-public");

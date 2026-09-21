@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { JSDOM } from "jsdom";
-import { createApp } from "../../src/app.js";
+import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
 const liveCalendar = {
   state: "live",
@@ -20,10 +20,9 @@ const liveCalendar = {
 };
 
 async function authenticatedAgent(marketNewsService) {
-  const agent = request.agent(createApp({
+  const agent = await loginTestOperator(createTestApp({
     sessionSecret: "test-secret", marketNewsService, logger: { error() {} },
   }));
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
   return agent;
 }
 
@@ -127,7 +126,7 @@ test("page preserves the terminal shell while a first load failure makes the API
 });
 
 test("market news API requires an authenticated operator", async () => {
-  await request(createApp({ sessionSecret: "test-secret", logger: { error() {} } }))
+  await request(createTestApp({ logger: { error() {} } }))
     .get("/api/market-news/events")
     .expect(401);
 });

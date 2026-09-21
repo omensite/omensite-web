@@ -32,7 +32,7 @@ if not exist "node_modules\" (
 set "omensiteHost=%HOST%"
 set "omensitePort=%PORT%"
 if not defined omensiteHost set "omensiteHost=127.0.0.1"
-if not defined omensitePort set "omensitePort=4173"
+if not defined omensitePort set "omensitePort=3000"
 
 echo [OMENSITE] Starting the MVC app at http://%omensiteHost%:%omensitePort%
 echo [OMENSITE] Authentication configuration: npm start loads .env when present.

@@ -43,63 +43,38 @@ test("beta guild preview requires live membership on login and refresh, and stil
   await assert.rejects(() => service.refreshOperator(operator), { code: "ACCOUNT_BANNED" });
 });
 
-test("demo authentication rejects blank credentials", async () => {
-  const service = createAuthService({ mode: "demo" });
-
-  await assert.rejects(
-    () => service.authenticateDemo({ username: " ", passkey: "" }),
-    { code: "CREDENTIALS_REQUIRED" },
-  );
+test("authentication service exposes only Discord and rejects alternate modes", () => {
+  const service = createAuthService();
+  assert.equal(service.authenticateDemo, undefined);
+  assert.equal(service.authenticate, undefined);
+  for (const mode of ["demo", "proxy", "local", ""]) {
+    assert.throws(() => createAuthService({ mode }), /AUTH_MODE must be discord/);
+  }
 });
 
-test("legacy authenticate retains demo login with a normalized demo ID", async () => {
+test("non-Discord operators cannot pass admission or be converted by refresh", async () => {
+  let providerCalls = 0;
   const service = createAuthService({
-    mode: "demo",
-    demoRoles: ["OS"],
     rolePolicy,
-    now,
+    discordProvider: { getCurrentGuildMember: async () => { providerCalls++; return { roles: ["role-dev"] }; } },
   });
-
-  const operator = await service.authenticate({ username: " Local_Operator ", passkey: "preview" });
-
-  assert.deepEqual(operator, {
-    id: "demo:local_operator",
-    username: "Local_Operator",
-    displayName: "Local_Operator",
-    avatarUrl: null,
-    authMode: "demo",
-    roles: ["OS"],
-    capabilities: ["base"],
-    rolesSyncedAt: "2026-09-02T12:00:00.000Z",
-    lastSignedInAt: "2026-09-02T12:00:00.000Z",
-    discordAuth: null,
-  });
+  for (const authMode of ["demo", "proxy", "local", undefined]) {
+    const operator = { id: "old-identity", authMode, roles: ["Developer"], capabilities: ["base", "admin"] };
+    assert.throws(() => service.assertOperatorAdmission(operator), { code: "ACCESS_REVOKED" });
+    await assert.rejects(() => service.refreshOperator(operator), { code: "ACCESS_REVOKED" });
+  }
+  assert.equal(providerCalls, 0);
 });
 
-test("demo authentication rejects a ban for the normalized demo ID", async () => {
-  const userRepository = createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" });
-  const service = createAuthService({
-    mode: "demo",
-    demoRoles: ["OS"],
-    rolePolicy,
-    userRepository,
-    banRepository: { isBanned: (id) => id === "demo:local_operator" },
-    now,
-  });
-
-  await assert.rejects(
-    () => service.authenticateDemo({ username: " Local_Operator ", passkey: "preview" }),
-    { code: "ACCOUNT_BANNED" },
-  );
-  assert.equal(userRepository.findById("demo:local_operator"), null);
-});
-
-test("demo authentication rejects module-only roles before persisting an operator", async () => {
-  for (const demoRoles of [["Indicators"], ["Journal"], ["Indicators", "Journal"]]) {
+test("Discord authentication rejects module-only roles before persisting an operator", async () => {
+  for (const roles of [["role-indicators"], ["role-journal"], ["role-indicators", "role-journal"]]) {
     const userRepository = createInMemoryUserRepository({ now: () => "2026-09-02T12:00:00.000Z" });
     const service = createAuthService({
-      mode: "demo",
-      demoRoles,
+      discordProvider: {
+        exchangeCode: async () => ({ accessToken: "access" }),
+        getCurrentUser: async () => ({ id: "module-user", username: "module_user" }),
+        getCurrentGuildMember: async () => ({ roles }),
+      },
       rolePolicy,
       userRepository,
       banRepository: { isBanned: () => false },
@@ -107,10 +82,10 @@ test("demo authentication rejects module-only roles before persisting an operato
     });
 
     await assert.rejects(
-      () => service.authenticateDemo({ username: "module_user", passkey: "preview" }),
+      () => service.completeDiscord({ code: "code" }),
       { code: "ACCESS_REVOKED" },
     );
-    assert.equal(userRepository.findById("demo:module_user"), null);
+    assert.equal(userRepository.findById("module-user"), null);
   }
 });
 
@@ -256,10 +231,10 @@ test("refresh replaces roles and capabilities from Discord membership", async ()
 test("final admission synchronously rechecks bans and base access", async () => {
   let banned = false;
   const service = createAuthService({
-    mode: "demo", demoRoles: ["OS"], rolePolicy,
+    rolePolicy,
     banRepository: { isBanned: () => banned }, now,
   });
-  const operator = await service.authenticateDemo({ username: "late-ban", passkey: "preview" });
+  const operator = { id: "late-ban", authMode: "discord", roles: ["OS"], capabilities: ["base"] };
 
   assert.equal(service.assertOperatorAdmission(operator), operator);
   banned = true;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
+import { createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
 function inMemoryRepository() {
   const records = new Map();
@@ -16,7 +16,7 @@ function inMemoryRepository() {
 
 test("journal API persists normalized entries for the signed-in operator", async () => {
   const app = createTestApp({ journalRepository: inMemoryRepository() });
-  const agent = await loginDemo(app);
+  const agent = await loginTestOperator(app);
   const csrf = await readCsrfToken(agent, "/journal");
 
   const created = await agent.post("/api/journal")
@@ -34,6 +34,6 @@ test("journal API requires authentication and CSRF on writes", async () => {
   const app = createTestApp({ journalRepository: inMemoryRepository() });
   const unauthenticated = await import("supertest").then(({ default: request }) => request(app));
   await unauthenticated.get("/api/journal").expect(401);
-  const agent = await loginDemo(app);
+  const agent = await loginTestOperator(app);
   await agent.post("/api/journal").send({ direction: "long" }).expect(403);
 });

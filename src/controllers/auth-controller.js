@@ -21,11 +21,6 @@ function saveSession(req) {
   });
 }
 
-const LOGIN_FAILURES = Object.freeze({
-  ACCOUNT_BANNED: Object.freeze({ status: 403, message: "ACCESS FAILED :: ACCOUNT BANNED" }),
-  ACCESS_REVOKED: Object.freeze({ status: 403, message: "ACCESS FAILED :: REQUIRED ROLE NOT PRESENT" }),
-});
-
 function discordFailureLocation(error) {
   if (error?.code === "ACCOUNT_BANNED") return "/login?error=account_banned";
   if (error?.code === "ACCESS_REVOKED") return "/login?error=access_revoked";
@@ -70,28 +65,6 @@ export function createAuthController({ authService, sessionRegistry, logger = co
   }
 
   return {
-    async login(req, res, next) {
-      try {
-        const authenticate = authService.authenticateDemo ?? authService.authenticate;
-        const operator = await authenticate(req.body ?? {});
-        await establishOperator(req, operator);
-        return res.json({ ok: true, redirectTo: "/home" });
-      } catch (error) {
-        if (error.code === "CREDENTIALS_REQUIRED") {
-          return res.status(400).json({ error: error.code });
-        }
-        const failure = LOGIN_FAILURES[error.code];
-        if (failure) {
-          return res.status(failure.status).json({
-            ok: false,
-            error: error.code,
-            message: failure.message,
-          });
-        }
-        return next(error);
-      }
-    },
-
     async beginDiscord(req, res, next) {
       try {
         const { state, authorizationUrl } = authService.beginDiscord();

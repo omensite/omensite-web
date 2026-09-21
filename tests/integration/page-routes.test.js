@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { JSDOM } from "jsdom";
-import { createApp } from "../../src/app.js";
+import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
 const marketNewsService = {
   getCurrentWeek: async () => ({
@@ -14,8 +14,7 @@ const marketNewsService = {
 };
 
 test("protected clean routes render full documents and fragments", async () => {
-  const agent = request.agent(createApp({ sessionSecret: "test-secret", marketNewsService }));
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const agent = await loginTestOperator(createTestApp({ marketNewsService }));
 
   const response = await agent.get("/home").expect(200);
   assert.match(response.text, /data-statusbar/);
@@ -27,6 +26,7 @@ test("protected clean routes render full documents and fragments", async () => {
 
   const cases = [
     ["/home", "omensite://home"],
+    ["/trader", "omensite://trader"],
     ["/indicators", "omensite://indicators"],
     ["/market-news", "omensite://market-news"],
     ["/alerts/ict", "omensite://alerts/ict"],
@@ -46,8 +46,7 @@ test("protected clean routes render full documents and fragments", async () => {
 });
 
 test("home quick-access links opt into fragment navigation", async () => {
-  const agent = request.agent(createApp({ sessionSecret: "test-secret" }));
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const agent = await loginTestOperator(createTestApp());
 
   const response = await agent.get("/home").expect(200);
   for (const path of ["/indicators", "/market-news", "/alerts/ict", "/alerts/support-resistance", "/journal"]) {
@@ -56,9 +55,8 @@ test("home quick-access links opt into fragment navigation", async () => {
 });
 
 test("server-rendered shell anchors retain terminal row styling and route-title markup", async () => {
-  const app = createApp({ sessionSecret: "test-secret" });
-  const agent = request.agent(app);
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const app = createTestApp();
+  const agent = await loginTestOperator(app);
 
   const [response, stylesheet] = await Promise.all([
     agent.get("/home").expect(200),
@@ -79,8 +77,7 @@ test("server-rendered shell anchors retain terminal row styling and route-title 
 });
 
 test("public journal fragments expose the concrete request path", async () => {
-  const agent = request.agent(createApp({ sessionSecret: "test-secret" }));
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const agent = await loginTestOperator(createTestApp());
 
   await agent.get("/journal/entry-42").set("X-Omensite-Fragment", "1")
     .expect(200)

@@ -16,23 +16,21 @@ const discordEnvironment = {
   DISCORD_ROLE_JOURNAL_ID: "journal-id",
 };
 
-test("demo configuration parses roles and refresh minutes", () => {
+test("Discord is the default authentication and parses refresh minutes", () => {
   const config = readAuthConfig({
-    env: { AUTH_MODE: "demo", SESSION_SECRET: "test-secret", DEMO_ROLES: "OS, Indicators,Journal", DISCORD_ROLE_REFRESH_MINUTES: "5" },
+    env: { ...discordEnvironment, AUTH_MODE: "", DISCORD_ROLE_REFRESH_MINUTES: "5" },
     nodeEnvironment: "development",
   });
 
-  assert.equal(config.mode, "demo");
-  assert.deepEqual(config.demoRoles, ["OS", "Indicators", "Journal"]);
+  assert.equal(config.mode, "discord");
+  assert.equal(config.discord.roleIds.Developer, "developer-id");
   assert.equal(config.roleRefreshMs, 300_000);
 });
 
 test("role refresh configuration cannot exceed the five-minute authorization ceiling", () => {
   const config = readAuthConfig({
     env: {
-      AUTH_MODE: "demo",
-      SESSION_SECRET: "test-secret",
-      DEMO_ROLES: "Admin",
+      ...discordEnvironment,
       DISCORD_ROLE_REFRESH_MINUTES: "60",
     },
     nodeEnvironment: "development",
@@ -41,11 +39,18 @@ test("role refresh configuration cannot exceed the five-minute authorization cei
   assert.equal(config.roleRefreshMs, 300_000);
 });
 
-test("production rejects demo mode", () => {
-  assert.throws(() => readAuthConfig({
-    env: { AUTH_MODE: "demo", SESSION_SECRET: "test-secret" },
-    nodeEnvironment: "production",
-  }), /Discord authentication is required in production/);
+test("every environment rejects demo mode", () => {
+  for (const nodeEnvironment of [undefined, "development", "test", "production"]) {
+    assert.throws(() => readAuthConfig({
+      env: { AUTH_MODE: "demo", SESSION_SECRET: "test-secret" },
+      nodeEnvironment,
+    }), /Discord authentication is required; AUTH_MODE must be discord/);
+  }
+});
+
+test("missing local configuration cannot fall back to demo access", () => {
+  assert.throws(() => readAuthConfig({ env: {}, nodeEnvironment: "development" }),
+    /Missing required Discord configuration: DISCORD_CLIENT_ID/);
 });
 
 test("discord mode reports every missing required value", () => {
@@ -66,19 +71,19 @@ test("configuration rejects unsupported authentication modes", () => {
   assert.throws(() => readAuthConfig({
     env: { AUTH_MODE: "local" },
     nodeEnvironment: "development",
-  }), /AUTH_MODE must be demo or discord/);
+  }), /AUTH_MODE must be discord/);
 });
 
 test("production rejects the former Authentik mode", () => {
   assert.throws(() => readAuthConfig({
     env: { AUTH_MODE: "proxy", SESSION_SECRET: "proxy-secret", DISCORD_ROLE_REFRESH_MINUTES: "5" },
     nodeEnvironment: "production",
-  }), /AUTH_MODE must be demo or discord/);
+  }), /AUTH_MODE must be discord/);
 });
 
 test("configuration rejects a nonpositive role refresh interval", () => {
   assert.throws(() => readAuthConfig({
-    env: { AUTH_MODE: "demo", DISCORD_ROLE_REFRESH_MINUTES: "0" },
+    env: { ...discordEnvironment, DISCORD_ROLE_REFRESH_MINUTES: "0" },
     nodeEnvironment: "development",
   }), /DISCORD_ROLE_REFRESH_MINUTES must be a positive number/);
 });
@@ -89,7 +94,6 @@ test("discord configuration maps all required values", () => {
   assert.deepEqual(config, {
     mode: "discord",
     sessionSecret: "test-secret",
-    demoRoles: [],
     roleRefreshMs: 300_000,
     discord: {
       accessPolicy: "roles",

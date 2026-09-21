@@ -2,6 +2,7 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
 import { createPostgresJournalRepository } from "../repositories/postgres-journal-repository.js";
+import { createPostgresBrainRepository } from "../agent-brain/brain-repository.js";
 
 export function createPostgresRuntime(databaseConfig) {
   if (!databaseConfig?.configured) throw new Error("PostgreSQL runtime requires a configured database");
@@ -23,6 +24,7 @@ export function createPostgresRuntime(databaseConfig) {
     pool,
     sessionStore,
     journalRepository: createPostgresJournalRepository(pool),
+    brainRepository: createPostgresBrainRepository(pool),
     readinessCheck: async () => {
       const result = await pool.query("SELECT 1 AS ready");
       return result.rows[0]?.ready === 1;

@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { JSDOM } from "jsdom";
-import { createApp } from "../../src/app.js";
+import { createTestApp } from "../helpers/auth-test-helpers.js";
 import { initializeLoginController } from "../../public/js/login-controller.js";
 
 test("login controller hydrates and disposes the accepted animated 34x12 sphere", async () => {
-  const response = await request(createApp({ sessionSecret: "test-secret" })).get("/login").expect(200);
+  const response = await request(createTestApp()).get("/login").expect(200);
   const dom = new JSDOM(response.text, { url: "http://localhost/login" });
   let intervalDelay;
   let intervalCallback;
@@ -43,7 +43,7 @@ test("login controller hydrates and disposes the accepted animated 34x12 sphere"
 });
 
 test("reduced-motion sphere renders one frame without scheduling an interval", async () => {
-  const response = await request(createApp({ sessionSecret: "test-secret" })).get("/login").expect(200);
+  const response = await request(createTestApp()).get("/login").expect(200);
   const dom = new JSDOM(response.text, { url: "http://localhost/login" });
   let intervals = 0;
   dom.window.matchMedia = () => ({ matches: true });

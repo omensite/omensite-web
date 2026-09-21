@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import { JSDOM } from "jsdom";
 import { createInMemoryIndicatorRequestRepository } from "../../src/repositories/in-memory-indicator-request-repository.js";
-import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
+import { createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
 test("Indicators page renders identity, catalog, request state, and CSRF field", async () => {
-  const agent = await loginDemo(createTestApp({ demoRoles: ["OS", "Indicators"] }), { username: "omen" });
+  const agent = await loginTestOperator(createTestApp({ roles: ["OS", "Indicators"] }), { username: "omen" });
   const response = await agent.get("/indicators").expect(200)
     .expect(/data-indicator-access-root/)
     .expect(/DEMO :: MARKET STRUCTURE/)
@@ -24,8 +24,8 @@ test("request API creates one pending all-indicator request", async () => {
   const indicatorRequestRepository = createInMemoryIndicatorRequestRepository({
     now: () => "2026-09-02T12:00:00.000Z",
   });
-  const agent = await loginDemo(createTestApp({
-    demoRoles: ["OS", "Indicators"], indicatorRequestRepository,
+  const agent = await loginTestOperator(createTestApp({
+    roles: ["OS", "Indicators"], indicatorRequestRepository,
   }), { username: "omen" });
   const csrf = await readCsrfToken(agent, "/indicators");
 
@@ -42,7 +42,7 @@ test("request API creates one pending all-indicator request", async () => {
 });
 
 test("Indicators page and request API both require the Indicators capability", async () => {
-  const os = await loginDemo(createTestApp({ demoRoles: ["OS"] }), { username: "member" });
+  const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
 
   await os.get("/indicators").set("X-Omensite-Fragment", "1").expect(403)
     .expect(({ body }) => assert.equal(body.error, "INSUFFICIENT_PERMISSIONS"));
@@ -54,8 +54,8 @@ test("Indicators page and request API both require the Indicators capability", a
 
 test("request API rejects missing CSRF and safe validation failures without storing a request", async () => {
   const indicatorRequestRepository = createInMemoryIndicatorRequestRepository();
-  const agent = await loginDemo(createTestApp({
-    demoRoles: ["OS", "Indicators"], indicatorRequestRepository,
+  const agent = await loginTestOperator(createTestApp({
+    roles: ["OS", "Indicators"], indicatorRequestRepository,
   }));
 
   await agent.post("/api/indicator-access/requests")
@@ -78,7 +78,7 @@ test("request API rejects missing CSRF and safe validation failures without stor
 });
 
 test("standard form submission creates the request and redirects back to Indicators", async () => {
-  const agent = await loginDemo(createTestApp({ demoRoles: ["OS", "Indicators"] }));
+  const agent = await loginTestOperator(createTestApp({ roles: ["OS", "Indicators"] }));
   const csrf = await readCsrfToken(agent, "/indicators");
 
   await agent.post("/api/indicator-access/requests")
@@ -94,33 +94,33 @@ test("TradingView links render only for granted requests with configured URLs", 
   const indicatorCatalog = Object.freeze([
     Object.freeze({
       id: "private-one", name: "PRIVATE ONE", description: "Configured script",
-      tradingViewUrl: "https://www.tradingview.com/script/example/", version: "1.0.0", active: true, demo: false,
+      tradingViewUrl: "https://www.tradingview.com/script/example/", version: "1.0.0", active: true, discord: false,
     }),
     Object.freeze({
       id: "private-two", name: "PRIVATE TWO", description: "Configured without a URL",
-      tradingViewUrl: null, version: "1.0.0", active: true, demo: false,
+      tradingViewUrl: null, version: "1.0.0", active: true, discord: false,
     }),
     Object.freeze({
       id: "unsafe-script", name: "UNSAFE SCRIPT", description: "Injected unsafe scheme",
-      tradingViewUrl: "javascript:alert(1)", version: "1.0.0", active: true, demo: false,
+      tradingViewUrl: "javascript:alert(1)", version: "1.0.0", active: true, discord: false,
     }),
     Object.freeze({
       id: "external-script", name: "EXTERNAL SCRIPT", description: "Injected unrelated host",
-      tradingViewUrl: "https://example.com/script/not-tradingview/", version: "1.0.0", active: true, demo: false,
+      tradingViewUrl: "https://example.com/script/not-tradingview/", version: "1.0.0", active: true, discord: false,
     }),
   ]);
   const app = createTestApp({
-    demoRoles: ["OS", "Indicators"], indicatorRequestRepository, indicatorCatalog,
+    roles: ["OS", "Indicators"], indicatorRequestRepository, indicatorCatalog,
   });
-  const agent = await loginDemo(app, { username: "omen" });
+  const agent = await loginTestOperator(app, { username: "omen" });
   indicatorRequestRepository.upsertPending({
-    userId: "demo:omen", discordUsername: "omen", tradingViewUsername: "omen_tv",
+    userId: "discord:omen", discordUsername: "omen", tradingViewUsername: "omen_tv",
     indicatorIds: ["private-one", "private-two", "unsafe-script", "external-script"],
   });
 
   let response = await agent.get("/indicators").expect(200);
   assert.doesNotMatch(response.text, /href="https:\/\/www\.tradingview\.com\/script\/example\//);
-  indicatorRequestRepository.decide({ userId: "demo:omen", status: "GRANTED", actorId: "admin" });
+  indicatorRequestRepository.decide({ userId: "discord:omen", status: "GRANTED", actorId: "admin" });
   response = await agent.get("/indicators").expect(200);
   assert.match(response.text, /href="https:\/\/www\.tradingview\.com\/script\/example\/"/);
   assert.equal((response.text.match(/OPEN IN TRADINGVIEW/g) ?? []).length, 1);

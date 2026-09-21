@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import request from "supertest";
 import test from "node:test";
-import { createTestApp, loginDemo } from "../helpers/auth-test-helpers.js";
+import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
 const DENIED_MESSAGE = "ACCESS FAILED :: INSUFFICIENT PERMISSIONS";
 
 test("Admin can open every module while OS receives structured 403 responses for modular fragments", async () => {
-  const admin = await loginDemo(createTestApp({ demoRoles: ["Admin"] }), { username: "admin" });
-  const os = await loginDemo(createTestApp({ demoRoles: ["OS"] }), { username: "member" });
+  const admin = await loginTestOperator(createTestApp({ roles: ["Admin"] }), { username: "admin" });
+  const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
 
   for (const path of ["/indicators", "/journal", "/admin"]) {
     await admin.get(path).expect(200);
@@ -18,7 +18,7 @@ test("Admin can open every module while OS receives structured 403 responses for
 });
 
 test("OS full-page denial redirects home and exposes the notice exactly once", async () => {
-  const os = await loginDemo(createTestApp({ demoRoles: ["OS"] }), { username: "member" });
+  const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
 
   await os.get("/admin").expect(302).expect("Location", "/home");
   await os.get("/home").expect(200).expect(new RegExp(DENIED_MESSAGE));
@@ -28,7 +28,7 @@ test("OS full-page denial redirects home and exposes the notice exactly once", a
 });
 
 test("all primary module links remain visible to OS users with capability diagnostics", async () => {
-  const os = await loginDemo(createTestApp({ demoRoles: ["OS"] }), { username: "member" });
+  const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
   const response = await os.get("/home").expect(200);
 
   for (const [path, capability] of [

@@ -1,6 +1,5 @@
 import { MAX_ROLE_SNAPSHOT_AGE_MS, ROLES } from "../models/access.js";
 
-const AUTH_MODES = new Set(["demo", "discord"]);
 const DISCORD_KEYS = Object.freeze([
   "DISCORD_CLIENT_ID",
   "DISCORD_CLIENT_SECRET",
@@ -58,12 +57,9 @@ function readDiscordConfig(env) {
 }
 
 export function readAuthConfig({ env = process.env, nodeEnvironment = process.env.NODE_ENV } = {}) {
-  const mode = readValue(env, "AUTH_MODE");
-  if (!AUTH_MODES.has(mode)) {
-    throw new Error("AUTH_MODE must be demo or discord");
-  }
-  if (nodeEnvironment === "production" && mode === "demo") {
-    throw new Error("Discord authentication is required in production");
+  const mode = readValue(env, "AUTH_MODE") || "discord";
+  if (mode !== "discord") {
+    throw new Error("Discord authentication is required; AUTH_MODE must be discord");
   }
 
   const sessionSecret = readValue(env, "SESSION_SECRET");
@@ -74,10 +70,43 @@ export function readAuthConfig({ env = process.env, nodeEnvironment = process.en
   return {
     mode,
     sessionSecret,
-    demoRoles: mode === "demo"
-      ? readValue(env, "DEMO_ROLES").split(",").map((role) => role.trim()).filter(Boolean)
-      : [],
     roleRefreshMs: readRoleRefreshMs(env),
-    discord: mode === "discord" ? readDiscordConfig(env) : null,
+    discord: readDiscordConfig(env),
   };
+}
+
+// Programmatic application configuration follows the same admission policy and
+// required credentials as environment-based startup.
+export function normalizeAuthConfig(config, {
+  nodeEnvironment = process.env.NODE_ENV,
+  appEnvironment = process.env.APP_ENVIRONMENT,
+  sessionSecret = config?.sessionSecret,
+} = {}) {
+  if (config?.mode !== "discord") {
+    throw new Error("Discord authentication is required; AUTH_MODE must be discord");
+  }
+  if (config.roleRefreshMs !== undefined
+    && (!Number.isFinite(config.roleRefreshMs) || config.roleRefreshMs <= 0)) {
+    throw new Error("roleRefreshMs must be a positive number");
+  }
+  const discord = config.discord ?? {};
+  return readAuthConfig({
+    nodeEnvironment,
+    env: {
+      AUTH_MODE: config.mode,
+      APP_ENVIRONMENT: appEnvironment,
+      SESSION_SECRET: sessionSecret,
+      DISCORD_ROLE_REFRESH_MINUTES: config.roleRefreshMs === undefined ? undefined : String(config.roleRefreshMs / 60_000),
+      DISCORD_ACCESS_POLICY: discord.accessPolicy,
+      DISCORD_CLIENT_ID: discord.clientId,
+      DISCORD_CLIENT_SECRET: discord.clientSecret,
+      DISCORD_REDIRECT_URI: discord.redirectUri,
+      DISCORD_GUILD_ID: discord.guildId,
+      DISCORD_ROLE_DEVELOPER_ID: discord.roleIds?.[ROLES.DEVELOPER],
+      DISCORD_ROLE_ADMIN_ID: discord.roleIds?.[ROLES.ADMIN],
+      DISCORD_ROLE_OS_ID: discord.roleIds?.[ROLES.OS],
+      DISCORD_ROLE_INDICATORS_ID: discord.roleIds?.[ROLES.INDICATORS],
+      DISCORD_ROLE_JOURNAL_ID: discord.roleIds?.[ROLES.JOURNAL],
+    },
+  });
 }

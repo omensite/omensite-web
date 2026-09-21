@@ -26,14 +26,15 @@ This release establishes OMENSITE's application architecture and core user exper
 - Clean, refreshable routes with progressive fragment navigation.
 - Seamless terminal-style page transitions and glitch effects.
 - A cinematic Matrix-inspired login sequence with animated terminal graphics.
-- Direct Discord OAuth2 popup sign-in that preserves the retro terminal, with server-enforced, role-based module access and a same-tab fallback. Demo authentication remains available for local development.
+- Discord-only OAuth2 popup sign-in that preserves the retro terminal, with server-enforced, role-based module access and a same-tab fallback in every environment.
 - A temporary-memory Admin panel for user sessions, bans, roles, and indicator-access decisions.
 - A request-all indicator workflow that records TradingView usernames and consent for manual access grants.
 - A PostgreSQL-backed trade journal with create, list, detail, and shareable-view workflows shared by beta and production.
 - A native live economic calendar with high/medium impact and market filters.
+- An Agentic Trader workspace with Gemini, OpenAI, and Claude provider selection, structured thesis generation, deterministic risk checks, a second AI review, and an explicit demo mode.
 - Automated integration and unit tests for routing, authentication, navigation, transitions, and journal behavior.
 
-AI analysis, brokerage or execution-data imports, automated TradingView access grants, and editorial content pipelines are planned capabilities and are not connected in v0.1.2.
+Agentic Trader analysis is available when an AI provider is configured. Brokerage and execution-data imports, autonomous order execution, AI journal review, automated TradingView access grants, and editorial content pipelines remain planned capabilities.
 
 ## Technology
 
@@ -54,7 +55,7 @@ The application renders complete pages on direct requests. Internal navigation r
 Double-click `start-omensite.bat` from the project root. The launcher installs missing dependencies and opens the server at:
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:3000
 ```
 
 Press `Ctrl+C` in the terminal window to stop the server.
@@ -68,7 +69,7 @@ npm install
 npm start
 ```
 
-Copy `.env.example` to `.env` before the first local run. The supplied local configuration uses demonstration authentication and listens on `127.0.0.1:4173`. The `.env` file is ignored by Git and must remain uncommitted.
+Copy `.env.example` to `.env` before the first local run and fill in the Discord application, guild, and role IDs described below. Set a random `SESSION_SECRET` and register `http://127.0.0.1:3000/auth/discord/callback` in the Discord application. The local server listens on `127.0.0.1:3000`. Missing Discord settings stop startup with a list of missing variable names; no development login is available. The `.env` file is ignored by Git and must remain uncommitted.
 
 For automatic restarts during development:
 
@@ -84,29 +85,50 @@ OMENSITE keeps only high- and medium-impact economic releases, maps each country
 
 The source provides release schedules and impact classifications derived from official public or openly licensed sources. It deliberately does not provide proprietary consensus forecasts, actual releases, or previous values. See the [Economicium calendar](https://www.economicium.com/economic-calendar/) and its [public JSON endpoint](https://www.economicium.com/api/calendar).
 
+## Agentic Trader
+
+The connected **Agent Brain** is available at `/brain`. It adds a bounded ReAct runtime, four routed agent roles, workflow planning, retrieval, persistent memory, critique, versioned human approval, tracing, budgets and an offline evaluation suite. See [the implementation map and setup guide](docs/agent-brain.md) for all 18 capabilities, limits, storage, and pricing configuration. Run `npm run eval:brain` to exercise the system without an API key.
+
+Open `/trader` from the sidebar or Home quick access. Gemini is selected by default; OpenAI and Claude are also available in the provider selector. The page reports each provider's configuration status and model. It never receives or stores API keys.
+
+Paid AI calls are **locked by default** across both workspaces. Keep `TRADER_PAID_AI_ENABLED=false` while building and validating the system. Adding an API key does not unlock analysis; the provider adapter also rejects direct calls. Demos, retrieval, saved research review and offline evaluations remain available. The `/brain` readiness panel shows current storage, sources, memory, configuration and the latest offline check results, with live validation clearly marked as pending.
+
+Provider credentials are optional during offline setup. When needed later, store them in the ignored local `.env` file or the hosted web service's environment:
+
+| Provider | Server secret | Optional model override |
+| --- | --- | --- |
+| Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` |
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_MODEL` |
+| Claude | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` |
+
+`TRADER_AI_PROVIDER` sets the initial selection (`gemini`, `openai`, or `claude`). Only the selected provider receives a run; there is no automatic fallback to another provider. Keys stay on the server. The Compose configuration forwards these optional settings to the web service. An absent key leaves that provider unavailable while the rest of OMENSITE continues to work.
+
+Only an explicit server-side `TRADER_PAID_AI_ENABLED=true` followed by a server restart enables billable requests. There is no browser control or request parameter that can activate them. Leave this disabled until setup has been reviewed and paid usage is explicitly authorized.
+
+Enter the instrument, timeframe, market observations, and risk settings. The workflow collects economic-calendar context, asks the selected model for a structured thesis, calculates position size and reward/risk on the server, and requests a separate review when the numeric checks pass. AI calls send the entered context and calendar data to the selected provider. The current workspace displays USD; `pointValue` is the dollar value of a one-point price move for one unit or contract.
+
+The server rejects invalid long/short stop geometry, missing levels, insufficient context, and plans that cannot fit one whole unit within the risk budget. A failed check or a review requesting more evidence produces a WAIT result. READY means the supplied plan passed these checks; it does not establish the accuracy of the observations or authorize an order. Sizing excludes commissions, slippage, margin, instrument tick sizes, and portfolio exposure.
+
+**Run demo** uses explicitly labeled illustrative levels without calling an AI or market provider. This makes the entire workflow reviewable before configuring credentials. Demo outputs are not market signals or paper fills.
+
+This first version operates on manually supplied market context; it does not subscribe to live prices, footprints, DOM, or brokerage accounts. Economic-calendar freshness is reported separately. It has no order-submission endpoint. The most recent ten runs per operator are kept in bounded process memory and clear on restart; they are not yet stored in the durable journal. Access uses the existing base-site capability and CSRF-protected authenticated API.
+
+Provider protocols use the official [Gemini structured-output API](https://ai.google.dev/gemini-api/docs/structured-output), [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses), and [Claude structured-output API](https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Provider contract tests use fake HTTP responses; paid API calls require configured credentials and separate live verification.
+
 ## Authentication and access
 
-### Demo access
-
-With `AUTH_MODE=demo`, any non-empty username and passkey are accepted, such as:
-
-```text
-Username: operator
-Passkey:  preview
-```
-
-`DEMO_ROLES` controls the local identity's roles. Demo mode is for workstation testing only and is rejected when `NODE_ENV=production`.
+Discord is the only authentication method in local development, beta, and production. `AUTH_MODE` defaults to `discord`; any other value is rejected. The former username/passkey endpoint returns 404 and old non-Discord sessions are invalidated. Offline Trader and Brain demos remain available after Discord sign-in and do not call paid AI providers.
 
 ### Discord SSO setup
 
 Discord authentication uses an OAuth2 application and the signed-in member's server roles. A Discord bot, bot user, and bot token are not required.
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications), then open **OAuth2**.
-2. Register this exact local redirect URI: `http://127.0.0.1:4173/auth/discord/callback`. Register the deployment's HTTPS callback separately before hosting.
+2. Register this exact local redirect URI: `http://127.0.0.1:3000/auth/discord/callback`. Register the deployment's HTTPS callback separately before hosting. If you change the local host or port, update both this registration and `DISCORD_REDIRECT_URI` to match.
 3. Copy the application's client ID and client secret into the matching `.env` entries. Never commit the populated `.env` file.
 4. In Discord, enable **User Settings → Advanced → Developer Mode**. Right-click the target server and each access role to copy their IDs into `DISCORD_GUILD_ID` and the five `DISCORD_ROLE_*_ID` entries. Configuration uses IDs, not editable role names.
-5. Generate a long, random production `SESSION_SECRET`, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`, and store it only in the deployment's secret configuration.
-6. Change `AUTH_MODE=discord` and restart the application.
+5. Generate a long, random `SESSION_SECRET`, for example with `node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"`, and store it in the ignored local `.env` or deployment's secret configuration.
+6. Keep `AUTH_MODE=discord` and restart the application.
 
 The retro terminal opens Discord sign-in in a separate popup. After Discord confirms the identity and server roles, the popup closes and the original terminal plays its handshake and ACCESS GRANTED animation. If popups are blocked, the terminal offers a same-tab sign-in link. Closing the popup leaves a Cancel / Retry control; unfinished attempts time out after five minutes. Discord controls its own authorization screen.
 
@@ -135,8 +157,13 @@ OMENSITE records a request for all active invite-only indicators, including the 
 ## Application routes
 
 - `/login` — Authentication terminal
-- `/auth/discord` — Discord OAuth2 sign-in entry point when Discord mode is active
+- `/auth/discord` — The application's only sign-in entry point
 - `/home` — Operations dashboard
+- `/trader` — Agentic Trader analysis, risk review, and demo workspace
+- `/brain` — Agent Brain mission control, workflow traces, human review, knowledge, memory and evaluations
+- `/api/brain/*` — Authenticated brain runs, decisions, cancellation, documents and offline evaluations; mutations require CSRF
+- `/api/trader/state` — Provider readiness and the authenticated operator's recent runs
+- `/api/trader/runs` — Create an analysis or demo run (authenticated POST with CSRF)
 - `/indicators` — Invite-only indicator catalog and access-request workflow
 - `/market-news` — Live current-week high- and medium-impact economic calendar
 - `/alerts/ict` — ICT alert workspace

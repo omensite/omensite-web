@@ -44,7 +44,7 @@ test("login sequence uses the specified timing profile for each motion preferenc
   assert.deepEqual(reducedDelays, [80, 80, 80, 80, 80, 80, 140, 650]);
 });
 
-test("reduced-motion grant replaces the login card with the granted screen", async () => {
+test("legacy credential markup cannot trigger a login request or grant access", () => {
   const dom = new JSDOM(`
     <section data-login-root>
       <div class="login-card">
@@ -58,88 +58,46 @@ test("reduced-motion grant replaces the login card with the granted screen", asy
     </section>
   `, { url: "http://localhost/login" });
   dom.window.matchMedia = () => ({ matches: true });
+  let requests = 0;
   const controller = initializeLoginController({
     documentRef: dom.window.document,
     windowRef: dom.window,
-    fetchImpl: async () => new Response(JSON.stringify({ ok: true, redirectTo: "#granted" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+    fetchImpl: async () => { requests += 1; },
   });
 
   try {
     dom.window.document.querySelector("[data-login-form]")
       .dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 1000));
-
-    assert.ok(dom.window.document.querySelector(".auth-granted"));
-    assert.equal(dom.window.document.querySelector(".login-card"), null);
+    assert.equal(controller, null);
+    assert.equal(requests, 0);
+    assert.equal(dom.window.document.querySelector(".auth-granted"), null);
+    assert.ok(dom.window.document.querySelector(".login-card"));
   } finally {
-    controller.dispose();
     dom.window.close();
   }
 });
 
-test("Discord completion marker starts the same grant sequence without a demo form", async () => {
+test("Discord completion marker starts the grant sequence", { timeout: 5000 }, async () => {
   const dom = new JSDOM(`
     <section data-login-root>
       <div class="login-card"><div data-auth-complete data-redirect-to="#discord-granted"></div></div>
     </section>
   `, { url: "http://localhost/auth/complete" });
-  dom.window.matchMedia = () => ({ matches: true });
+  const completed = Promise.withResolvers();
   const controller = initializeLoginController({
     documentRef: dom.window.document,
-    windowRef: dom.window,
+    windowRef: {
+      matchMedia: () => ({ matches: true }),
+      location: { set href(value) { completed.resolve(value); } },
+    },
     fetchImpl: async () => { throw new Error("completion must not submit"); },
   });
 
   try {
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 1400));
+    assert.equal(await completed.promise, "#discord-granted");
     assert.ok(dom.window.document.querySelector(".auth-granted"));
     assert.equal(dom.window.document.querySelector(".login-card"), null);
   } finally {
-    controller.dispose();
-    dom.window.close();
-  }
-});
-
-test("demo login displays fixed banned and revoked failures instead of a network error", async () => {
-  const outcomes = [
-    ["ACCOUNT_BANNED", "> ERR :: ACCESS FAILED — ACCOUNT BANNED"],
-    ["ACCESS_REVOKED", "> ERR :: ACCESS FAILED — REQUIRED ROLE NOT PRESENT"],
-  ];
-
-  for (const [code, expected] of outcomes) {
-    const dom = new JSDOM(`
-      <section data-login-root>
-        <div class="login-card">
-          <form data-login-form>
-            <input data-login-user value="operator">
-            <input data-login-passkey value="preview">
-            <div data-login-error hidden></div>
-            <button data-login-submit type="submit">[ LOGIN ]</button>
-          </form>
-        </div>
-      </section>
-    `, { url: "http://localhost/login" });
-    dom.window.matchMedia = () => ({ matches: true });
-    const controller = initializeLoginController({
-      documentRef: dom.window.document,
-      windowRef: dom.window,
-      fetchImpl: async () => Response.json({
-        ok: false,
-        error: code,
-        message: "<img src=x onerror=privateFailure()>",
-      }, { status: 403 }),
-    });
-
-    dom.window.document.querySelector("[data-login-form]")
-      .dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
-    await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
-
-    const error = dom.window.document.querySelector("[data-login-error]");
-    assert.equal(error.textContent, expected);
-    assert.equal(error.querySelector("img"), null);
     controller.dispose();
     dom.window.close();
   }

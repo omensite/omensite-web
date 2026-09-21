@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { JSDOM } from "jsdom";
-import { createApp } from "../../src/app.js";
+import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
 test("server pages retain the accepted panel and terminal calendar geometry hooks", async () => {
-  const agent = request.agent(createApp({
+  const agent = await loginTestOperator(createTestApp({
     sessionSecret: "test-secret",
     marketNewsService: {
       getCurrentWeek: async () => ({
@@ -26,7 +26,6 @@ test("server pages retain the accepted panel and terminal calendar geometry hook
       }),
     },
   }));
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
   await agent.get("/home").expect(200).expect(/grid grid-4/).expect(/grid grid-2-1/).expect(/panel-kicker/).expect(/quicklink/);
   await agent.get("/indicators").expect(200)
     .expect(/indicator-console/).expect(/indicator-catalog-row/).expect(/indicator-request/).expect(/terminal-check/);
@@ -39,9 +38,8 @@ test("server pages retain the accepted panel and terminal calendar geometry hook
 });
 
 test("Indicators retain open terminal-list geometry instead of nested card styling", async () => {
-  const app = createApp({ sessionSecret: "test-secret" });
-  const agent = request.agent(app);
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const app = createTestApp();
+  const agent = await loginTestOperator(app);
   const [response, stylesheet] = await Promise.all([
     agent.get("/indicators").expect(200),
     request(app).get("/css/omensite.css").expect(200),
@@ -61,9 +59,8 @@ test("Indicators retain open terminal-list geometry instead of nested card styli
 });
 
 test("Admin uses open terminal rails with dense action rows and mobile field labels", async () => {
-  const app = createApp({ sessionSecret: "test-secret" });
-  const agent = request.agent(app);
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
+  const app = createTestApp();
+  const agent = await loginTestOperator(app);
   const [response, stylesheet] = await Promise.all([
     agent.get("/admin").expect(200),
     request(app).get("/css/omensite.css").expect(200),

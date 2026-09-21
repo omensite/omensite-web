@@ -2,6 +2,8 @@ import { CAPABILITIES } from "./access.js";
 
 const ROUTES = [
   { key: "home", title: "HOME", path: "/home", uri: "home", description: "Landing dashboard, system status, recent activity, important summaries, and quick links.", view: "home", capability: CAPABILITIES.BASE },
+  { key: "trader", title: "AGENTIC TRADER", path: "/trader", uri: "trader", description: "AI market analysis, independent risk checks, and reviewed trade plans with Gemini, OpenAI, or Claude.", view: "trader", capability: CAPABILITIES.BASE },
+  { key: "brain", title: "AGENT BRAIN", path: "/brain", uri: "brain", description: "Plan, research, verify, and remember. An observable agent system with human review.", view: "brain", capability: CAPABILITIES.BASE },
   { key: "indicators", title: "INDICATORS", path: "/indicators", uri: "indicators", description: "TradingView indicator access, entitlement status, instructions, and related resources.", view: "indicators", capability: CAPABILITIES.INDICATORS },
   { key: "market-news", title: "MARKET NEWS", path: "/market-news", uri: "market-news", description: "Important financial events, red-folder news, orange-folder news, and market reports.", view: "market-news", capability: CAPABILITIES.BASE },
   { key: "alerts-ict", title: "ALERTS :: ICT", path: "/alerts/ict", uri: "alerts/ict", description: "Alerts for ICT-based conditions, concepts, and future strategy-specific signals.", view: "alerts-ict", capability: CAPABILITIES.BASE },
@@ -12,7 +14,7 @@ const ROUTES = [
   { key: "journal-public", title: "PUBLIC JOURNAL ENTRY", path: "/journal/:id", uri: "journal/public", description: "The shareable public record and webhook embed generated on submission.", view: "journal-public", capability: CAPABILITIES.JOURNAL },
 ];
 
-export const NAVIGATION = ROUTES.slice(0, 7);
+export const NAVIGATION = ROUTES.filter((route) => !["journal-new", "journal-public"].includes(route.key));
 
 export const ROUTE_BY_KEY = Object.fromEntries(ROUTES.map((route) => [route.key, route]));
 

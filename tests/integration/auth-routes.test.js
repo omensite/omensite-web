@@ -4,7 +4,7 @@ import session from "express-session";
 import request from "supertest";
 import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
 import { createInMemoryBanRepository } from "../../src/repositories/in-memory-ban-repository.js";
-import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
+import { beginTestDiscordLogin, createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
 const discordOperator = {
   id: "42", username: "omen", displayName: "Omen", avatarUrl: null, authMode: "discord",
@@ -12,22 +12,19 @@ const discordOperator = {
   discordAuth: { accessToken: "discord-access-token-42", refreshToken: "discord-refresh-token-42", expiresAt: "2026-09-03T12:00:00.000Z" },
 };
 
-test("demo login establishes, registers, and CSRF-protects the operator session", async () => {
+test("Discord login establishes, registers, and CSRF-protects the operator session", async () => {
   const registered = [];
   const unregistered = [];
   const sessionRegistry = { register: (...values) => registered.push(values), unregister: (...values) => unregistered.push(values) };
-  const authService = {
-    authenticateDemo: async ({ username }) => ({ ...discordOperator, id: `demo:${username}`, username, displayName: username, authMode: "demo", discordAuth: null }),
-    revokeOperatorToken: async () => {},
-  };
-  const app = createTestApp({ authService, sessionRegistry });
+  const app = createTestApp({ sessionRegistry });
   const agent = request.agent(app);
 
   await agent.get("/home").expect(302).expect("Location", "/login");
-  const login = await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200).expect({ ok: true, redirectTo: "/home" });
+  const { callbackPath } = await beginTestDiscordLogin(app, { agent });
+  const login = await agent.get(callbackPath).expect(302).expect("Location", "/auth/complete");
   assert.doesNotMatch(login.text, /discord-access-token-42|discord-refresh-token-42|test-secret/);
   assert.equal(registered.length, 1);
-  assert.equal(registered[0][0], "demo:operator");
+  assert.equal(registered[0][0], "discord:operator");
 
   const csrfToken = await readCsrfToken(agent, "/home");
   assert.match(csrfToken, /^[A-Za-z0-9_-]{43}$/);
@@ -44,25 +41,23 @@ test("same-browser re-login replaces the prior identity session registry mapping
   const app = createTestApp({ sessionRegistry });
   const agent = request.agent(app);
 
-  const firstLogin = await agent.post("/auth/login")
-    .send({ username: "first", passkey: "preview" })
-    .expect(200);
+  const first = await beginTestDiscordLogin(app, { username: "first", agent });
+  const firstLogin = await agent.get(first.callbackPath).expect(302).expect("Location", "/auth/complete");
   const firstCookie = firstLogin.headers["set-cookie"][0].split(";", 1)[0];
-  assert.equal(sessionRegistry.activeCount("demo:first"), 1);
+  assert.equal(sessionRegistry.activeCount("discord:first"), 1);
 
-  const secondLogin = await agent.post("/auth/login")
-    .send({ username: "second", passkey: "preview" })
-    .expect(200);
+  const second = await beginTestDiscordLogin(app, { username: "second", agent });
+  const secondLogin = await agent.get(second.callbackPath).expect(302).expect("Location", "/auth/complete");
   const secondCookie = secondLogin.headers["set-cookie"][0].split(";", 1)[0];
 
   assert.notEqual(secondCookie, firstCookie);
-  assert.equal(sessionRegistry.activeCount("demo:first"), 0);
-  assert.deepEqual(sessionRegistry.listSessionIds("demo:first"), []);
-  assert.equal(sessionRegistry.activeCount("demo:second"), 1);
-  assert.equal(sessionRegistry.listSessionIds("demo:second").length, 1);
+  assert.equal(sessionRegistry.activeCount("discord:first"), 0);
+  assert.deepEqual(sessionRegistry.listSessionIds("discord:first"), []);
+  assert.equal(sessionRegistry.activeCount("discord:second"), 1);
+  assert.equal(sessionRegistry.listSessionIds("discord:second").length, 1);
 });
 
-test("a ban committed during session regeneration prevents final demo admission", async () => {
+test("a ban committed during session regeneration prevents final Discord admission", async () => {
   const banRepository = createInMemoryBanRepository();
   const sessionRegistry = createInMemorySessionRegistry();
   const sessionStore = new session.MemoryStore();
@@ -78,24 +73,19 @@ test("a ban committed during session regeneration prevents final demo admission"
     signalRegeneration();
     return regenerationReleased.then(() => destroy(sessionId, callback));
   };
-  const app = createTestApp({ banRepository, sessionRegistry, sessionStore });
+  const app = createTestApp({ banRepository, sessionRegistry, sessionStore, logger: { warn() {}, error() {} } });
   const agent = request.agent(app);
 
-  const loginPromise = agent.post("/auth/login")
-    .send({ username: "racing-user", passkey: "preview" })
-    .then((response) => response);
+  const { callbackPath } = await beginTestDiscordLogin(app, { username: "racing-user", agent });
+  const loginPromise = agent.get(callbackPath).then((response) => response);
   await regenerationReached;
-  banRepository.ban({ userId: "demo:racing-user", actorId: "admin", reason: "Concurrent ban" });
+  banRepository.ban({ userId: "discord:racing-user", actorId: "admin", reason: "Concurrent ban" });
   releaseRegeneration();
   const response = await loginPromise;
 
-  assert.equal(response.status, 403);
-  assert.deepEqual(response.body, {
-    ok: false,
-    error: "ACCOUNT_BANNED",
-    message: "ACCESS FAILED :: ACCOUNT BANNED",
-  });
-  assert.equal(sessionRegistry.activeCount("demo:racing-user"), 0);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, "/login?error=account_banned");
+  assert.equal(sessionRegistry.activeCount("discord:racing-user"), 0);
   await agent.get("/home").expect(302).expect("Location", "/login");
 });
 
@@ -156,22 +146,21 @@ test("login renders only allowlisted authentication failures with fixed messages
     });
 });
 
-test("demo and Discord modes expose only their matching login entry point", async () => {
-  await request(createTestApp()).get("/login").expect(200).expect(/data-login-form/)
-    .expect((response) => assert.doesNotMatch(response.text, /data-discord-login/));
-  await request(createTestApp()).get("/auth/discord").expect(404);
-
-  const discordApp = createTestApp({ authMode: "discord", authService: { beginDiscord: () => ({ state: "state", authorizationUrl: "/provider" }) } });
+test("Discord is the only login entry point and the old credentials endpoint cannot authenticate", async () => {
+  const discordApp = createTestApp({ authService: { beginDiscord: () => ({ state: "state", authorizationUrl: "/provider" }) } });
   await request(discordApp).get("/login").expect(200).expect(/data-discord-login/)
-    .expect((response) => assert.doesNotMatch(response.text, /data-login-form/));
-  await request(discordApp).post("/auth/login").send({ username: "x", passkey: "y" }).expect(404);
+    .expect((response) => assert.doesNotMatch(response.text, /data-login-form|data-login-user|data-login-passkey/));
+  const client = request.agent(discordApp);
+  await client.post("/auth/login").send({ username: "x", passkey: "y" }).expect(404);
+  await client.get("/home").expect(302).expect("Location", "/login");
+  await client.get("/auth/discord").expect(302).expect("Location", "/provider");
 });
 
 test("root and login recover to the correct page from every session state", async () => {
   const app = createTestApp();
   await request(app).get("/").expect(302).expect("Location", "/login");
   await request(app).get("/login").expect(200).expect(/data-login-root/);
-  const agent = await loginDemo(app, { username: "cinematic", passkey: "refresh" });
+  const agent = await loginTestOperator(app, { username: "cinematic" });
   await agent.get("/").expect(302).expect("Location", "/home");
   await agent.get("/login").expect(302).expect("Location", "/home");
   await agent.get("/home").expect(200).expect(/data-app-shell/);
@@ -336,14 +325,9 @@ test("logout attempts Discord revocation but always destroys and unregisters the
 test("logout still revokes and destroys when session registry cleanup fails", async () => {
   let revocations = 0;
   const authService = {
-    authenticateDemo: async ({ username }) => ({
-      ...discordOperator,
-      id: `demo:${username}`,
-      username,
-      displayName: username,
-      authMode: "demo",
-      discordAuth: null,
-    }),
+    beginDiscord: () => ({ state: "correct", authorizationUrl: "/discord" }),
+    completeDiscord: async () => discordOperator,
+    refreshOperator: async (operator) => operator,
     revokeOperatorToken: async () => { revocations += 1; },
   };
   const sessionRegistry = {
@@ -351,7 +335,9 @@ test("logout still revokes and destroys when session registry cleanup fails", as
     unregister() { throw new Error("registry unavailable"); },
   };
   const app = createTestApp({ authService, sessionRegistry, logger: { error() {} } });
-  const agent = await loginDemo(app);
+  const agent = request.agent(app);
+  await agent.get("/auth/discord");
+  await agent.get("/auth/discord/callback?code=code&state=correct").expect(302).expect("Location", "/auth/complete");
   const csrfToken = await readCsrfToken(agent, "/home");
 
   await agent.post("/auth/logout").set("X-CSRF-Token", csrfToken).expect(200);
@@ -365,11 +351,10 @@ test("logout destruction failure retains a revoked registry entry and clears the
   const sessionRegistry = createInMemorySessionRegistry();
   const app = createTestApp({ sessionStore, sessionRegistry, logger: { error() {} } });
   const agent = request.agent(app);
-  const loginResponse = await agent.post("/auth/login")
-    .send({ username: "retryable-logout", passkey: "preview" })
-    .expect(200);
+  const { callbackPath } = await beginTestDiscordLogin(app, { username: "retryable-logout", agent });
+  const loginResponse = await agent.get(callbackPath).expect(302).expect("Location", "/auth/complete");
   const csrfToken = await readCsrfToken(agent, "/home");
-  const [sessionId] = sessionRegistry.listSessionIds("demo:retryable-logout");
+  const [sessionId] = sessionRegistry.listSessionIds("discord:retryable-logout");
   const originalCookie = loginResponse.headers["set-cookie"][0].split(";", 1)[0];
   sessionStore.destroy = (candidate, callback) => {
     if (candidate === sessionId) return callback(new Error("private store failure"));
@@ -382,7 +367,7 @@ test("logout destruction failure retains a revoked registry entry and clears the
     .expect((result) => assert.doesNotMatch(result.text, /OMENSITE OVERVIEW|private store failure/));
 
   assert.match(response.headers["set-cookie"]?.join(";") ?? "", /connect\.sid=;/);
-  assert.deepEqual(sessionRegistry.listSessionIds("demo:retryable-logout"), [sessionId]);
+  assert.deepEqual(sessionRegistry.listSessionIds("discord:retryable-logout"), [sessionId]);
   assert.equal(sessionRegistry.isRevoked(sessionId), true);
   await request(app).get("/home").set("Cookie", originalCookie).expect(302).expect("Location", "/login?error=access_revoked");
 });

@@ -96,13 +96,15 @@ test("expired popup attempts cannot exchange an authorization code", async (t) =
   await agent.get("/home").expect(302).expect("Location", "/login");
 });
 
-test("forwarded Authentik identities and sessions from the former mode cannot grant app access", async () => {
-  assert.throws(() => createApp({ authConfig: { mode: "proxy" } }), /AUTH_MODE must be demo or discord/);
+test("forwarded identities and sessions from former authentication modes cannot grant app access", async () => {
+  for (const mode of ["proxy", "demo"]) {
+    assert.throws(() => createApp({ authConfig: { mode } }), /AUTH_MODE must be discord/);
+  }
   const app = createTestApp({
     authMode: "discord",
     configureRoutes(app) {
       app.get("/seed-old-session", (req, res) => {
-        req.session.operator = { ...operator, authMode: "proxy", roles: ["Developer"], capabilities: ["base", "admin"] };
+        req.session.operator = { ...operator, authMode: req.query.mode, roles: ["Developer"], capabilities: ["base", "admin"] };
         res.sendStatus(204);
       });
     },
@@ -110,7 +112,10 @@ test("forwarded Authentik identities and sessions from the former mode cannot gr
   const agent = request.agent(app);
   await agent.get("/home").set({ "X-authentik-uid": "42", "X-authentik-username": "omen" })
     .expect(302).expect("Location", "/login");
-  await agent.get("/seed-old-session");
-  await agent.get("/admin").expect(302).expect("Location", "/login");
-  await agent.get("/login").expect(200).expect(/SIGN IN WITH DISCORD/);
+  for (const mode of ["proxy", "demo", "local"]) {
+    await agent.get(`/seed-old-session?mode=${mode}`);
+    await agent.get("/admin").expect(302).expect("Location", "/login");
+    await agent.get("/api/brain/state").expect(401).expect({ error: "AUTH_REQUIRED", loginUrl: "/login" });
+    await agent.get("/login").expect(200).expect(/SIGN IN WITH DISCORD/);
+  }
 });

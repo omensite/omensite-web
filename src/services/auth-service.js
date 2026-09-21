@@ -21,8 +21,7 @@ function isExpired(expiresAt, now) {
 }
 
 export function createAuthService({
-  mode = "demo",
-  demoRoles = [],
+  mode = "discord",
   discordProvider,
   discordAccessPolicy = "roles",
   rolePolicy = createRolePolicy({ roleIds: {} }),
@@ -30,6 +29,9 @@ export function createAuthService({
   banRepository = { isBanned: () => false },
   now = () => new Date(),
 } = {}) {
+  if (mode !== "discord") {
+    throw new Error("Discord authentication is required; AUTH_MODE must be discord");
+  }
   function buildOperator({ identity, authMode, roles, capabilities, discordAuth, rolesSyncedAt, lastSignedInAt }) {
     return {
       id: identity.id,
@@ -63,6 +65,9 @@ export function createAuthService({
   }
 
   function assertOperatorAdmission(operator) {
+    if (operator?.authMode !== "discord") {
+      throw createAuthError("ACCESS_REVOKED", "Sign in through Discord to continue");
+    }
     rejectIfBanned(operator.id);
     rejectIfNoBaseAccess(operator);
     return operator;
@@ -74,34 +79,6 @@ export function createAuthService({
     return discordAccessPolicy === "beta-guild"
       ? rolePolicy.fromRoleNames(["Developer"])
       : rolePolicy.fromDiscordRoleIds(member.roles);
-  }
-
-  async function authenticateDemo({ username = "", passkey = "" } = {}) {
-    const normalizedUsername = username.trim();
-    if (!normalizedUsername || !passkey.trim()) {
-      throw createAuthError("CREDENTIALS_REQUIRED", "Credentials required");
-    }
-
-    rejectIfBanned(`demo:${normalizedUsername.toLowerCase()}`);
-    const access = rolePolicy.fromRoleNames(demoRoles);
-    rejectIfNoBaseAccess(access);
-    const signedInAt = toIsoTimestamp(now());
-    const operator = buildOperator({
-      identity: {
-        id: `demo:${normalizedUsername.toLowerCase()}`,
-        username: normalizedUsername,
-        displayName: normalizedUsername,
-        avatarUrl: null,
-      },
-      authMode: "demo",
-      roles: access.roles,
-      capabilities: access.capabilities,
-      rolesSyncedAt: signedInAt,
-      lastSignedInAt: signedInAt,
-      discordAuth: null,
-    });
-    persistSafeSnapshot(operator);
-    return operator;
   }
 
   function beginDiscord() {
@@ -134,6 +111,9 @@ export function createAuthService({
   }
 
   async function refreshOperator(operator) {
+    if (operator?.authMode !== "discord") {
+      throw createAuthError("ACCESS_REVOKED", "Sign in through Discord to continue");
+    }
     rejectIfBanned(operator.id);
     let discordAuth = operator.discordAuth;
     if (isExpired(discordAuth?.expiresAt, now)) {
@@ -167,8 +147,6 @@ export function createAuthService({
   }
 
   return {
-    authenticateDemo,
-    authenticate: authenticateDemo,
     assertOperatorAdmission,
     beginDiscord,
     completeDiscord,

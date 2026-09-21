@@ -7,9 +7,9 @@ import { createInMemoryBanRepository } from "../../src/repositories/in-memory-ba
 import { createInMemoryIndicatorRequestRepository } from "../../src/repositories/in-memory-indicator-request-repository.js";
 import { createInMemorySessionRegistry } from "../../src/repositories/in-memory-session-registry.js";
 import { createInMemoryUserRepository } from "../../src/repositories/in-memory-user-repository.js";
-import { createTestApp, loginDemo, readCsrfToken } from "../helpers/auth-test-helpers.js";
+import { beginTestDiscordLogin, createDiscordAuthConfig, createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
-function createAdminRouteHarness(demoRoles = ["Admin"], appOptions = {}) {
+function createAdminRouteHarness(roles = ["Admin"], appOptions = {}) {
   const now = () => "2026-09-02T12:00:00.000Z";
   const userRepository = createInMemoryUserRepository({ now });
   const banRepository = createInMemoryBanRepository({ now });
@@ -26,7 +26,7 @@ function createAdminRouteHarness(demoRoles = ["Admin"], appOptions = {}) {
   });
   return {
     app: createTestApp({
-      demoRoles, userRepository, banRepository, sessionRegistry, indicatorRequestRepository,
+      roles, userRepository, banRepository, sessionRegistry, indicatorRequestRepository,
       ...appOptions,
     }),
     userRepository, banRepository, sessionRegistry, indicatorRequestRepository,
@@ -39,7 +39,7 @@ test("Admin page renders memory warning, safe users, requests, and mutation toke
     id: "unsafe", username: "safe-name", displayName: "Safe Name", roles: ["OS"], capabilities: ["base"],
     discordAuth: { accessToken: "must-not-render" },
   });
-  const agent = await loginDemo(app, { username: "admin" });
+  const agent = await loginTestOperator(app, { username: "admin" });
   const response = await agent.get("/admin").expect(200)
     .expect(/TEMPORARY MEMORY MODE/)
     .expect(/data-admin-root/)
@@ -69,7 +69,7 @@ test("Admin request audit renders safe active TradingView links and decision met
     indicatorIds: ["demo-market-structure", "unsafe"],
   });
   harness.indicatorRequestRepository.decide({ userId: "42", status: "GRANTED", actorId: "reviewer-7" });
-  const agent = await loginDemo(harness.app, { username: "admin" });
+  const agent = await loginTestOperator(harness.app, { username: "admin" });
 
   const response = await agent.get("/admin").expect(200);
   const dom = new JSDOM(response.text);
@@ -96,7 +96,7 @@ test("Admin request audit renders safe active TradingView links and decision met
 
 test("OS cannot mutate Admin resources and capability is checked before CSRF", async () => {
   const { app, banRepository } = createAdminRouteHarness(["OS"]);
-  const agent = await loginDemo(app, { username: "member" });
+  const agent = await loginTestOperator(app, { username: "member" });
 
   await agent.post("/api/admin/users/42/ban")
     .send({ _csrf: "anything", reason: "blocked" })
@@ -107,7 +107,7 @@ test("OS cannot mutate Admin resources and capability is checked before CSRF", a
 
 test("Admin can ban, unban, sign out, and decide an indicator request", async () => {
   const { app, sessionRegistry, indicatorRequestRepository } = createAdminRouteHarness(["Admin"]);
-  const admin = await loginDemo(app, { username: "admin" });
+  const admin = await loginTestOperator(app, { username: "admin" });
   const csrf = await readCsrfToken(admin, "/admin");
   sessionRegistry.register("42", "not-present-in-store");
 
@@ -135,7 +135,7 @@ test("Admin can ban, unban, sign out, and decide an indicator request", async ()
 
 test("Admin actions reject missing CSRF without changing temporary state", async () => {
   const { app, banRepository } = createAdminRouteHarness(["Developer"]);
-  const admin = await loginDemo(app, { username: "developer" });
+  const admin = await loginTestOperator(app, { username: "developer" });
 
   await admin.post("/api/admin/users/42/ban").send({ reason: "blocked" })
     .expect(403).expect(({ body }) => assert.equal(body.error, "CSRF_INVALID"));
@@ -144,14 +144,14 @@ test("Admin actions reject missing CSRF without changing temporary state", async
 
 test("self-ban is blocked while self-sign-out invalidates the current Admin session", async () => {
   const { app, banRepository } = createAdminRouteHarness(["Admin"]);
-  const admin = await loginDemo(app, { username: "admin" });
+  const admin = await loginTestOperator(app, { username: "admin" });
   const csrf = await readCsrfToken(admin, "/admin");
 
-  await admin.post("/api/admin/users/demo%3Aadmin/ban")
+  await admin.post("/api/admin/users/discord%3Aadmin/ban")
     .set("X-CSRF-Token", csrf).send({ reason: "self" })
     .expect(409).expect(({ body }) => assert.equal(body.error, "SELF_BAN_FORBIDDEN"));
-  assert.equal(banRepository.isBanned("demo:admin"), false);
-  await admin.post("/api/admin/users/demo%3Aadmin/sign-out")
+  assert.equal(banRepository.isBanned("discord:admin"), false);
+  await admin.post("/api/admin/users/discord%3Aadmin/sign-out")
     .set("X-CSRF-Token", csrf)
     .expect(200).expect(({ body }) => {
       assert.equal(body.selfSignedOut, true);
@@ -162,7 +162,7 @@ test("self-ban is blocked while self-sign-out invalidates the current Admin sess
 
 test("Admin mutations support ordinary HTML form posts", async () => {
   const { app, banRepository } = createAdminRouteHarness(["Admin"]);
-  const admin = await loginDemo(app, { username: "admin" });
+  const admin = await loginTestOperator(app, { username: "admin" });
   const csrf = await readCsrfToken(admin, "/admin");
 
   await admin.post("/api/admin/users/42/ban").type("form")
@@ -180,11 +180,11 @@ test("unauthenticated Admin API requests are rejected", async () => {
 test("a just-banned Admin cannot self-unban while session destruction is delayed", async () => {
   const sessionStore = new session.MemoryStore();
   const harness = createAdminRouteHarness(["Admin"], { sessionStore, logger: { error() {} } });
-  const banningAdmin = await loginDemo(harness.app, { username: "root-admin" });
-  const bannedAdmin = await loginDemo(harness.app, { username: "racing-admin" });
+  const banningAdmin = await loginTestOperator(harness.app, { username: "root-admin" });
+  const bannedAdmin = await loginTestOperator(harness.app, { username: "racing-admin" });
   const banningCsrf = await readCsrfToken(banningAdmin, "/admin");
   const bannedCsrf = await readCsrfToken(bannedAdmin, "/admin");
-  const [bannedSessionId] = harness.sessionRegistry.listSessionIds("demo:racing-admin");
+  const [bannedSessionId] = harness.sessionRegistry.listSessionIds("discord:racing-admin");
   const originalDestroy = sessionStore.destroy.bind(sessionStore);
   let signalDestroy;
   let releaseDestroy;
@@ -209,12 +209,12 @@ test("a just-banned Admin cannot self-unban while session destruction is delayed
     return originalDestroy(sessionId, callback);
   };
 
-  const banRequest = banningAdmin.post("/api/admin/users/demo%3Aracing-admin/ban")
+  const banRequest = banningAdmin.post("/api/admin/users/discord%3Aracing-admin/ban")
     .set("X-CSRF-Token", banningCsrf)
     .send({ reason: "Concurrent ban" })
     .then((response) => response);
   await destroyReached;
-  const selfUnban = bannedAdmin.post("/api/admin/users/demo%3Aracing-admin/unban")
+  const selfUnban = bannedAdmin.post("/api/admin/users/discord%3Aracing-admin/unban")
     .set("X-CSRF-Token", bannedCsrf)
     .then((response) => response);
   await bannedSessionRead;
@@ -224,38 +224,36 @@ test("a just-banned Admin cannot self-unban while session destruction is delayed
   const unbanResponse = await selfUnban;
   assert.equal(unbanResponse.status, 401);
   assert.equal(unbanResponse.body.loginUrl, "/login?error=account_banned");
-  assert.equal(harness.banRepository.isBanned("demo:racing-admin"), true);
+  assert.equal(harness.banRepository.isBanned("discord:racing-admin"), true);
   await bannedAdmin.get("/home").expect(302).expect("Location", "/login");
 });
 
 test("failed ban invalidation retains a fail-closed SID that cannot unban or load protected content", async () => {
   const sessionStore = new session.MemoryStore();
   const harness = createAdminRouteHarness(["Admin"], { sessionStore, logger: { error() {} } });
-  const banningAdmin = await loginDemo(harness.app, { username: "root-admin" });
-  const bannedAdmin = request.agent(harness.app);
-  const bannedLogin = await bannedAdmin.post("/auth/login")
-    .send({ username: "failed-admin", passkey: "preview" })
-    .expect(200);
+  const banningAdmin = await loginTestOperator(harness.app, { username: "root-admin" });
+  const { agent: bannedAdmin, callbackPath } = await beginTestDiscordLogin(harness.app, { username: "failed-admin" });
+  const bannedLogin = await bannedAdmin.get(callbackPath).expect(302).expect("Location", "/auth/complete");
   const banningCsrf = await readCsrfToken(banningAdmin, "/admin");
   const bannedCsrf = await readCsrfToken(bannedAdmin, "/admin");
-  const [bannedSessionId] = harness.sessionRegistry.listSessionIds("demo:failed-admin");
+  const [bannedSessionId] = harness.sessionRegistry.listSessionIds("discord:failed-admin");
   const originalCookie = bannedLogin.headers["set-cookie"][0].split(";", 1)[0];
   const originalDestroy = sessionStore.destroy.bind(sessionStore);
   sessionStore.destroy = (sessionId, callback) => sessionId === bannedSessionId
     ? callback(new Error("private store failure"))
     : originalDestroy(sessionId, callback);
 
-  await banningAdmin.post("/api/admin/users/demo%3Afailed-admin/ban")
+  await banningAdmin.post("/api/admin/users/discord%3Afailed-admin/ban")
     .set("X-CSRF-Token", banningCsrf)
     .send({ reason: "Concurrent ban" })
     .expect(503);
 
-  assert.deepEqual(harness.sessionRegistry.listSessionIds("demo:failed-admin"), [bannedSessionId]);
+  assert.deepEqual(harness.sessionRegistry.listSessionIds("discord:failed-admin"), [bannedSessionId]);
   assert.equal(harness.sessionRegistry.isRevoked(bannedSessionId), true);
-  await bannedAdmin.post("/api/admin/users/demo%3Afailed-admin/unban")
+  await bannedAdmin.post("/api/admin/users/discord%3Afailed-admin/unban")
     .set("X-CSRF-Token", bannedCsrf)
     .expect(401);
-  assert.equal(harness.banRepository.isBanned("demo:failed-admin"), true);
+  assert.equal(harness.banRepository.isBanned("discord:failed-admin"), true);
   await request(harness.app).get("/home").set("Cookie", originalCookie)
     .expect(302).expect("Location", "/login?error=account_banned")
     .expect((response) => assert.doesNotMatch(response.text, /OMENSITE OVERVIEW/));
@@ -273,17 +271,8 @@ test("an Admin mutation refreshes Discord roles at five minutes even when config
     },
   };
   const authConfig = {
-    mode: "discord",
-    sessionSecret: "test-secret",
-    demoRoles: [],
+    ...createDiscordAuthConfig(),
     roleRefreshMs: 3_600_000,
-    discord: {
-      clientId: "client",
-      clientSecret: "secret",
-      redirectUri: "http://localhost/auth/discord/callback",
-      guildId: "guild",
-      roleIds: {},
-    },
   };
   const app = createTestApp({
     authConfig,

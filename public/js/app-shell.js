@@ -5,6 +5,8 @@ import { initializeAdminPage } from "./admin/admin-controller.js";
 import { HttpJournalRepository } from "./journal/http-journal-repository.js";
 import { createJournalService } from "./journal/journal-service.js";
 import { initializeMarketNewsPage } from "./market-news/market-news-controller.js";
+import { initializeTraderPage } from "./trader/trader-controller.js";
+import { initializeBrainPage } from "./brain/brain-controller.js";
 import { startSphereRenderer } from "./sphere-renderer.js";
 import { createTransitionController } from "./transition-controller.js";
 import { createDrawerController, setActiveNavigation, startStatusUpdates } from "./ui-utils.js";
@@ -63,6 +65,15 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
     }
     if (route.key === "market-news") {
       disposeActiveRoute = initializeMarketNewsPage(root, { fetchImpl, windowRef }).dispose;
+    }
+    if (route.key === "trader") {
+      disposeActiveRoute = initializeTraderPage(root, {
+        fetchImpl,
+        showToast: (message) => showTerminalToast(documentRef, message),
+      }).dispose;
+    }
+    if (route.key === "brain") {
+      disposeActiveRoute = initializeBrainPage(root, { fetchImpl, windowRef }).dispose;
     }
     if (route.key === "indicators") {
       disposeActiveRoute = initializeIndicatorAccessPage(root, {

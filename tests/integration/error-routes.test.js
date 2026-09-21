@@ -2,16 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
-import { createDiscordAuthConfig } from "../helpers/auth-test-helpers.js";
-
-async function authenticatedAgent(app) {
-  const agent = request.agent(app);
-  await agent.post("/auth/login").send({ username: "operator", passkey: "preview" }).expect(200);
-  return agent;
-}
+import { createDiscordAuthConfig, createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
 test("unknown full requests return the terminal 404 page", async () => {
-  const agent = await authenticatedAgent(createApp({ sessionSecret: "test-secret" }));
+  const agent = await loginTestOperator(createTestApp());
   const response = await agent.get("/missing-terminal-route").expect(404);
   assert.match(response.text, /<!doctype html>/i);
   assert.match(response.text, /404 :: ROUTE NOT FOUND/);
@@ -19,7 +13,7 @@ test("unknown full requests return the terminal 404 page", async () => {
 });
 
 test("unknown fragment requests return only a safe 404 fragment", async () => {
-  const agent = await authenticatedAgent(createApp({ sessionSecret: "test-secret" }));
+  const agent = await loginTestOperator(createTestApp());
   const response = await agent.get("/missing-terminal-route").set("X-Omensite-Fragment", "1").expect(404);
   assert.match(response.text, /404 :: ROUTE NOT FOUND/);
   assert.doesNotMatch(response.text, /<!doctype html>|data-app-shell/i);
@@ -50,7 +44,7 @@ test("production server errors omit stack traces", async () => {
 
 test("headers-sent server errors are delegated to the next error handler", () => {
   const diagnostics = [];
-  const app = createApp({
+  const app = createTestApp({
     sessionSecret: "test-secret",
     logger: { error: (...values) => diagnostics.push(values) },
   });

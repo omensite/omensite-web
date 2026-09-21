@@ -12,6 +12,7 @@ import { createAdminService } from "./services/admin-service.js";
 import { createIndicatorAccessService } from "./services/indicator-access-service.js";
 import { createRolePolicy } from "./services/role-policy.js";
 import { createIndicatorCatalog } from "./config/indicator-catalog.js";
+import { normalizeAuthConfig, readAuthConfig } from "./config/auth-config.js";
 import { ensureCsrfToken } from "./security/csrf.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { createRefreshRoles } from "./middleware/refresh-roles.js";
@@ -23,8 +24,17 @@ import { createJournalRoutes } from "./routes/journal-routes.js";
 import { createIndicatorRoutes } from "./routes/indicator-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
-import { LOGIN_ERROR_MESSAGES } from "./models/access.js";
+import { CAPABILITIES, LOGIN_ERROR_MESSAGES, MAX_ROLE_SNAPSHOT_AGE_MS } from "./models/access.js";
 import { createInMemoryJournalRepository } from "./repositories/in-memory-journal-repository.js";
+import { createTraderAIProvider } from "./providers/trader-ai-provider.js";
+import { createTraderService } from "./services/trader-service.js";
+import { createTraderRoutes } from "./routes/trader-routes.js";
+import { createMemoryBrainRepository } from "./agent-brain/brain-repository.js";
+import { createBrainKnowledge } from "./agent-brain/brain-knowledge.js";
+import { createBrainModelGateway } from "./agent-brain/brain-model-gateway.js";
+import { createBrainTools } from "./agent-brain/brain-tools.js";
+import { createBrainService } from "./agent-brain/brain-service.js";
+import { createBrainRoutes } from "./routes/brain-routes.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +42,7 @@ export function createApp({
   sessionSecret,
   sessionStore,
   environment = process.env.NODE_ENV ?? "development",
+  appEnvironment = process.env.APP_ENVIRONMENT,
   trustProxy,
   authConfig,
   authService,
@@ -47,37 +58,34 @@ export function createApp({
     provider: createEconomiciumCalendarProvider(),
   }),
   journalRepository = createInMemoryJournalRepository(),
+  traderAIProvider,
+  traderService,
+  brainRepository = createMemoryBrainRepository(),
+  brainKnowledge,
+  brainModelGateway,
+  brainTools,
+  brainService,
+  brainEvaluator,
   readinessCheck = async () => true,
   configureRoutes,
   logger = console,
 } = {}) {
-  const resolvedAuthConfig = authConfig ?? {
-    mode: "demo",
-    sessionSecret: sessionSecret ?? process.env.SESSION_SECRET ?? "",
-    demoRoles: ["Developer"],
-    roleRefreshMs: 300_000,
-    discord: null,
-  };
-  if (!["demo", "discord"].includes(resolvedAuthConfig.mode)) {
-    throw new Error("AUTH_MODE must be demo or discord");
-  }
-  if (environment === "production" && resolvedAuthConfig.mode !== "discord") {
-    throw new Error("Discord authentication is required in production");
-  }
-  const secret = sessionSecret || resolvedAuthConfig.sessionSecret || process.env.SESSION_SECRET;
-  if (!secret && environment === "production") {
-    throw new Error("SESSION_SECRET is required in production");
-  }
+  const resolvedAuthConfig = authConfig == null ? readAuthConfig({
+    env: { ...process.env, APP_ENVIRONMENT: appEnvironment, ...(sessionSecret ? { SESSION_SECRET: sessionSecret } : {}) },
+    nodeEnvironment: environment,
+  }) : normalizeAuthConfig(authConfig, {
+    nodeEnvironment: environment,
+    appEnvironment,
+    sessionSecret: sessionSecret || authConfig.sessionSecret || process.env.SESSION_SECRET,
+  });
+  const secret = resolvedAuthConfig.sessionSecret || undefined;
   if (!sessionStore && environment === "production") {
     throw new Error("sessionStore is required in production");
   }
   const resolvedSessionStore = sessionStore ?? new session.MemoryStore();
-  const resolvedDiscordProvider = discordProvider ?? (resolvedAuthConfig.mode === "discord"
-    ? createDiscordOAuthProvider(resolvedAuthConfig.discord)
-    : undefined);
+  const resolvedDiscordProvider = discordProvider ?? createDiscordOAuthProvider(resolvedAuthConfig.discord);
   const resolvedAuthService = authService ?? createAuthService({
     mode: resolvedAuthConfig.mode,
-    demoRoles: resolvedAuthConfig.demoRoles,
     discordProvider: resolvedDiscordProvider,
     discordAccessPolicy: resolvedAuthConfig.discord?.accessPolicy ?? "roles",
     rolePolicy: createRolePolicy({ roleIds: resolvedAuthConfig.discord?.roleIds ?? {} }),
@@ -106,6 +114,32 @@ export function createApp({
     assertOperatorAdmission: (operator) => resolvedAuthService.assertOperatorAdmission?.(operator),
   });
 
+  const resolvedAIProvider = traderAIProvider ?? createTraderAIProvider();
+  const resolvedBrainKnowledge = brainKnowledge ?? createBrainKnowledge({ repository: brainRepository });
+  const resolvedBrainGateway = brainModelGateway ?? createBrainModelGateway({ aiProvider: resolvedAIProvider, repository: brainRepository });
+  const canReadBrainJournal = async (ownerId) => {
+    try {
+      const operator = await userRepository.findById(ownerId);
+      if (!operator || operator.authMode !== resolvedAuthConfig.mode
+        || !operator.capabilities?.includes(CAPABILITIES.BASE)
+        || !operator.capabilities?.includes(CAPABILITIES.JOURNAL)
+        || await banRepository.isBanned?.(ownerId)) return false;
+      await resolvedAuthService.assertOperatorAdmission?.(operator);
+      if (operator.authMode === "discord") {
+        const age = Date.now() - new Date(operator.rolesSyncedAt).valueOf();
+        if (!Number.isFinite(age) || age < 0 || age > MAX_ROLE_SNAPSHOT_AGE_MS) return false;
+      }
+      return true;
+    } catch { return false; }
+  };
+  const resolvedBrainTools = brainTools ?? createBrainTools({
+    knowledge: resolvedBrainKnowledge, journalRepository, marketNewsService, canReadJournal: canReadBrainJournal,
+  });
+  const resolvedBrainService = brainService ?? createBrainService({
+    repository: brainRepository, knowledge: resolvedBrainKnowledge,
+    modelGateway: resolvedBrainGateway, tools: resolvedBrainTools,
+  });
+
   const app = express();
   app.locals.authConfig = resolvedAuthConfig;
   app.locals.authService = resolvedAuthService;
@@ -116,9 +150,17 @@ export function createApp({
   app.locals.indicatorCatalog = resolvedIndicatorCatalog;
   app.locals.indicatorRequestRepository = indicatorRequestRepository;
   app.locals.adminService = resolvedAdminService;
+  app.locals.brainService = resolvedBrainService;
+  app.locals.brainRepository = brainRepository;
+  app.locals.brainKnowledge = resolvedBrainKnowledge;
+  app.locals.brainTools = resolvedBrainTools;
   app.set("trust proxy", trustProxy ?? (environment === "production" ? 1 : false));
   app.set("view engine", "ejs");
   app.set("views", path.join(sourceDirectory, "..", "views"));
+  app.use(["/brain", "/api/brain"], (req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  });
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
   app.use(express.static(path.join(sourceDirectory, "..", "public")));
@@ -184,6 +226,17 @@ export function createApp({
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));
   app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));
+  app.use(createTraderRoutes({
+    traderService: traderService ?? createTraderService({
+      aiProvider: resolvedAIProvider,
+      marketNewsService,
+    }),
+    logger,
+  }));
+  app.use(createBrainRoutes({
+    brainService: resolvedBrainService, brainKnowledge: resolvedBrainKnowledge,
+    brainTools: resolvedBrainTools, brainEvaluator, logger,
+  }));
   app.use(createJournalRoutes({ journalRepository }));
 
   app.use((req, res) => res.status(404).render("pages/error", {
@@ -193,6 +246,11 @@ export function createApp({
   app.use((error, req, res, next) => {
     logger.error?.("Unhandled application error");
     if (res.headersSent) return next(error);
+    if (req.path.startsWith("/api/brain/")) {
+      if (error?.type === "entity.parse.failed") return res.status(400).json({ error: "BRAIN_INVALID_INPUT", message: "The request body must be valid JSON." });
+      if (error?.type === "entity.too.large") return res.status(413).json({ error: "BRAIN_INVALID_INPUT", message: "The request body exceeds the size limit." });
+      return res.status(500).json({ error: "BRAIN_UNAVAILABLE", message: "The agent brain is unavailable. Try again." });
+    }
     res.status(500).render("pages/error", {
       fragment: req.isOmensiteFragment, status: 500, heading: "INTERNAL TERMINAL ERROR",
       message: "SERVER FAULT CONTAINED :: TRY AGAIN",

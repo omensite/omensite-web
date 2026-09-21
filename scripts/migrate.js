@@ -16,9 +16,10 @@ export async function migrate(env = process.env) {
     max: 1,
   });
   try {
-    const sql = await readFile(new URL("../migrations/001_initial.sql", import.meta.url), "utf8");
+    const migrations = await Promise.all(["001_initial.sql", "002_agent_brain.sql"].map((filename) =>
+      readFile(new URL(`../migrations/${filename}`, import.meta.url), "utf8")));
     await pool.query("BEGIN");
-    await pool.query(sql);
+    for (const sql of migrations) await pool.query(sql);
     await pool.query("COMMIT");
   } catch (error) {
     await pool.query("ROLLBACK").catch(() => {});
