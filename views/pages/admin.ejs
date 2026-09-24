@@ -2,20 +2,27 @@
   data-admin-root data-current-user-id="<%= page.operator.id %>" aria-busy="false">
   <%- include("../partials/route-head", { page }) %>
 
-  <div class="admin-memory-warning" role="status">
+  <div class="cortex-kpis" aria-label="Administration overview">
+    <article class="cortex-kpi"><span>MEMBER IDENTITIES</span><strong><%= page.data.users.length %></strong><small>Recorded Discord members</small></article>
+    <article class="cortex-kpi"><span>ACTIVE SESSIONS</span><strong><%= page.data.users.reduce((sum, user) => sum + Number(user.activeSessions || 0), 0) %></strong><small>Snapshot at page load</small></article>
+    <article class="cortex-kpi"><span>PENDING REQUESTS</span><strong><%= page.data.requests.filter((request) => request.status === "PENDING").length %></strong><small>Snapshot at page load</small></article>
+  </div>
+
+  <div class="admin-memory-warning" data-storage-state="<%= page.data.storage?.persistent ? 'persistent' : 'temporary' %>" role="status">
     <% if (page.data.storage?.persistent) { %>
-      <span class="blip">[ POSTGRESQL CONNECTED ]</span>
-      <span>USERS, BANS, SESSIONS, AND REQUEST DECISIONS ARE SAVED IN THE DATABASE.</span>
+      <strong>POSTGRESQL CONNECTED</strong>
+      <span>Member records, access decisions, bans, and sessions are saved in the database.</span>
     <% } else { %>
-      <span class="blip">[ TEMPORARY MEMORY MODE ]</span>
-      <span>ADMIN RECORDS USE TEMPORARY STORAGE AND MAY RESET WHEN THIS PROCESS RESTARTS.</span>
+      <strong>WARN · TEMPORARY MEMORY MODE</strong>
+      <span>Administrative records may reset when this process restarts.</span>
     <% } %>
   </div>
 
-  <section class="admin-rail" aria-labelledby="admin-users-heading" data-admin-users>
-    <div class="admin-rail-head">
-      <h2 id="admin-users-heading" class="section-label">&gt; USER MANAGEMENT</h2>
-      <span><%= page.data.users.length %> IDENTITIES SEEN</span>
+  <section class="admin-rail cortex-panel" aria-labelledby="admin-users-heading" data-admin-users>
+    <div class="admin-rail-head cortex-panel-head">
+      <h2 id="admin-users-heading">MEMBER ACCESS</h2>
+      <span><%= page.data.users.length %> IDENTITIES</span>
+      <a href="/admin" data-nav-link>Refresh overview ↻</a>
     </div>
     <div class="admin-user-head" aria-hidden="true">
       <span>IDENTITY</span><span>ACCESS</span><span>SESSION STATE</span><span>ACTIONS</span>
@@ -28,19 +35,19 @@
           data-admin-unban-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban">
           <div class="admin-user-identity" data-field="IDENTITY">
             <strong><%= user.displayName || user.username %></strong>
-            <span>@<%= user.username %> :: <%= user.id %></span>
-            <span>AUTH :: <%= user.authMode.toUpperCase() %></span>
+            <span>@<%= user.username %> · <%= user.id %></span>
+            <span><%= user.authMode.toUpperCase() %> AUTHENTICATION</span>
           </div>
           <div class="admin-access-list" data-field="ACCESS">
-            <span>ROLES :: <strong><%= user.roles.length ? user.roles.join(" / ") : "NONE" %></strong></span>
-            <span>CAPS :: <strong><%= user.capabilities.length ? user.capabilities.join(" / ") : "NONE" %></strong></span>
-            <% if (user.lastSignedInAt) { %><span data-admin-last-sign-in>SIGNED IN :: <time datetime="<%= user.lastSignedInAt %>"><%= user.lastSignedInAt %></time></span><% } %>
-            <% if (user.rolesSyncedAt) { %><span data-admin-role-sync>ROLE SYNC :: <time datetime="<%= user.rolesSyncedAt %>"><%= user.rolesSyncedAt %></time></span><% } %>
-            <% if (user.lastSeenAt) { %><span>SEEN :: <time datetime="<%= user.lastSeenAt %>"><%= user.lastSeenAt %></time></span><% } %>
+            <span>ROLES <strong><%= user.roles.length ? user.roles.join(" / ") : "NONE" %></strong></span>
+            <span>ACCESS <strong><%= user.capabilities.length ? user.capabilities.join(" / ") : "NONE" %></strong></span>
+            <% if (user.lastSignedInAt) { %><span data-admin-last-sign-in>SIGNED IN <time datetime="<%= user.lastSignedInAt %>"><%= user.lastSignedInAt %></time></span><% } %>
+            <% if (user.rolesSyncedAt) { %><span data-admin-role-sync>ROLE SYNC <time datetime="<%= user.rolesSyncedAt %>"><%= user.rolesSyncedAt %></time></span><% } %>
+            <% if (user.lastSeenAt) { %><span>LAST SEEN <time datetime="<%= user.lastSeenAt %>"><%= user.lastSeenAt %></time></span><% } %>
           </div>
           <div class="admin-session-state" data-field="SESSION STATE">
             <output data-admin-ban-state class="<%= user.banned ? "admin-state-danger" : "admin-state-ok" %>"><%= user.banned ? "BANNED" : "ALLOWED" %></output>
-            <span>ACTIVE SESSIONS :: <strong data-admin-session-count><%= user.activeSessions %></strong></span>
+            <span>ACTIVE SESSIONS <strong data-admin-session-count><%= user.activeSessions %></strong></span>
             <% if (user.ban) { %>
               <span data-admin-ban-detail>BY <%= user.ban.actorId %> :: <time datetime="<%= user.ban.bannedAt %>"><%= user.ban.bannedAt %></time></span>
             <% } %>
@@ -50,14 +57,14 @@
               <input type="hidden" name="_csrf" value="<%= csrfToken %>">
               <button class="btn" type="submit" data-admin-action="sign-out"
                 data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/sign-out"
-                data-admin-confirm="SIGN OUT ALL SESSIONS FOR <%= user.username %>?">[ SIGN OUT ]</button>
+                data-admin-confirm="SIGN OUT ALL SESSIONS FOR <%= user.username %>?">Sign out</button>
             </form>
             <% if (user.banned) { %>
               <form action="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban" method="post">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                 <button class="btn" type="submit" data-admin-action="unban"
                   data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/unban"
-                  data-admin-confirm="RESTORE SITE ACCESS FOR <%= user.username %>?">[ UNBAN ]</button>
+                  data-admin-confirm="RESTORE SITE ACCESS FOR <%= user.username %>?">Restore access</button>
               </form>
             <% } else { %>
               <form action="/api/admin/users/<%= encodeURIComponent(user.id) %>/ban" method="post">
@@ -65,7 +72,7 @@
                 <input type="hidden" name="reason" value="Administrative action">
                 <button class="btn btn-danger" type="submit" data-admin-action="ban"
                   data-admin-action-endpoint="/api/admin/users/<%= encodeURIComponent(user.id) %>/ban"
-                  data-admin-confirm="BAN <%= user.username %> AND TERMINATE ALL SESSIONS?" <%= isSelf ? "disabled" : "" %>>[ BAN ]</button>
+                  data-admin-confirm="BAN <%= user.username %> AND TERMINATE ALL SESSIONS?" <%= isSelf ? "disabled" : "" %>>Ban member</button>
               </form>
             <% } %>
           </div>
@@ -74,10 +81,10 @@
     </ol>
   </section>
 
-  <section class="admin-rail" aria-labelledby="admin-requests-heading" data-admin-requests>
-    <div class="admin-rail-head">
-      <h2 id="admin-requests-heading" class="section-label">&gt; INDICATOR ACCESS REQUESTS</h2>
-      <span>MANUAL TRADINGVIEW WORKFLOW</span>
+  <section class="admin-rail cortex-panel" aria-labelledby="admin-requests-heading" data-admin-requests>
+    <div class="admin-rail-head cortex-panel-head">
+      <h2 id="admin-requests-heading">INDICATOR REQUESTS</h2>
+      <span>MANUAL TRADINGVIEW ACCESS</span>
     </div>
     <div class="admin-request-head" aria-hidden="true">
       <span>MEMBER</span><span>REQUEST</span><span>STATE</span><span>DECISION</span>
@@ -112,7 +119,7 @@
                   <button class="btn <%= status === "DENIED" ? "btn-danger" : "" %>" type="submit"
                     data-admin-action="decision" data-admin-decision="<%= status %>"
                     data-admin-action-endpoint="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision"
-                    data-admin-confirm="MARK THIS REQUEST <%= status %>?">[ <%= status %> ]</button>
+                    data-admin-confirm="MARK THIS REQUEST <%= status %>?">Mark <%= status.toLowerCase() %></button>
                 </form>
               <% } %>
             </div>
@@ -122,6 +129,7 @@
         </li>
       <% } %>
     </ol>
+    <% if (!page.data.requests.length) { %><div class="cortex-empty-state cortex-empty-compact"><h3>No indicator requests</h3><p>Member access requests will appear here for review.</p></div><% } %>
   </section>
 
   <output class="admin-feedback" data-admin-feedback aria-live="polite"></output>

@@ -75,7 +75,20 @@ export function createBrainController({ brainService, brainKnowledge, brainTools
       const state = await brainService.getState(ownerId);
       const documents = await brainKnowledge.listDocuments(ownerId);
       const broker = await robinhoodService?.state(ownerId);
+      // Cortex needs operational switches, never credentials, account snapshots,
+      // order arguments or the broker action log. Keep this projection explicit.
+      const robinhoodState = broker ? {
+        configured: broker.configured === true,
+        connected: broker.connected === true,
+        liveEnabled: broker.liveEnabled === true,
+        paused: broker.paused !== false,
+        storage: {
+          kind: ["memory", "sqlite", "postgres"].includes(broker.storage?.kind) ? broker.storage.kind : "unknown",
+          persistent: broker.storage?.persistent === true,
+        },
+      } : null;
       return res.json({ ...state, documents, toolDefinitions: brainTools?.definitions("strategist") ?? [],
+        robinhoodState,
         readiness: buildBrainReadiness({ state, documents, lastEvaluation, broker }) });
     }),
     getRun: handle(async (req, res, ownerId) => {

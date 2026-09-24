@@ -119,8 +119,9 @@ test("fragment requests receive 401 instead of a redirect", async () => {
   await request(createTestApp()).get("/home").set("X-Omensite-Fragment", "1").expect(401).expect({ error: "AUTH_REQUIRED", loginUrl: "/login" });
 });
 
-test("login identifies the current v0.1.2 release", async () => {
-  await request(createTestApp()).get("/login").expect(200).expect(/OMENSITE TRADING TERMINAL v0\.1\.2/);
+test("login identifies Omensite and its Discord single sign-on entry", async () => {
+  await request(createTestApp()).get("/login").expect(200)
+    .expect(/aria-label="Omensite"/).expect(/DISCORD SINGLE SIGN-ON/).expect(/data-discord-login/);
 });
 
 test("login renders only allowlisted authentication failures with fixed messages", async () => {

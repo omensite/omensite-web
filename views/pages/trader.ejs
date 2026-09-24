@@ -1,20 +1,18 @@
 <section class="route trader" data-route-view data-route-key="<%= page.route.key %>" data-trader>
   <%- include("../partials/route-head", { page }) %>
 
-  <div class="trader-session" aria-label="Workspace capabilities">
-    <span class="trader-session-mode"><span aria-hidden="true">◆</span> ANALYSIS WORKSPACE</span>
-    <span>DATA :: YOUR CONTEXT</span>
-    <span>BROKER WORKSPACE :: ROBINHOOD IN BRAIN</span>
-    <a href="/brain" data-nav-link>OPEN AGENT BRAIN ↗</a>
-  </div>
+  <section class="cortex-panel cortex-page-intro" aria-label="Analysis workflow">
+    <div><span class="cortex-eyebrow">RESEARCH STUDIO</span><h2>From context to a reviewed thesis.</h2><p>Choose your model, supply dated observations, and inspect the risk behind every proposal.</p></div>
+    <a class="btn" href="/brain?view=robinhood" data-nav-link>Open Robinhood ↗</a>
+  </section>
 
   <p class="trader-session" data-trader-cost-lock role="status">Paid AI calls locked. Offline demo and checks are available.</p>
 
   <div class="trader-workspace">
-    <section class="panel trader-input" aria-labelledby="trader-input-title">
-      <header class="trader-panel-head">
-        <h2 id="trader-input-title"><span class="trader-section-number">01</span> CONFIGURE RUN</h2>
-        <span class="trader-micro">AGENT.INPUT</span>
+    <section class="panel cortex-panel trader-input" aria-labelledby="trader-input-title">
+      <header class="trader-panel-head cortex-panel-head">
+        <h2 id="trader-input-title"><span class="trader-section-number">01</span> MISSION INPUT</h2>
+        <span class="trader-micro">YOUR CONTEXT</span>
       </header>
 
       <form data-trader-form>
@@ -44,7 +42,7 @@
 
         <div class="trader-form-grid">
           <label class="field" for="trader-symbol">SYMBOL
-            <input id="trader-symbol" name="symbol" value="ES" maxlength="24" pattern="[A-Za-z0-9^\/][A-Za-z0-9._:\/=^\-]{0,23}" required spellcheck="false" autocomplete="off" title="Use 1 to 24 standard ticker characters, such as ES, NQ, SPY, or BTC/USD.">
+            <input id="trader-symbol" name="symbol" value="SPY" maxlength="24" pattern="[A-Za-z0-9^\/][A-Za-z0-9._:\/=^\-]{0,23}" required spellcheck="false" autocomplete="off" title="Use 1 to 24 standard ticker characters, such as SPY or BTC/USD.">
           </label>
           <label class="field" for="trader-timeframe">TIMEFRAME
             <select id="trader-timeframe" name="timeframe">
@@ -73,7 +71,7 @@
               <input id="trader-risk" name="riskPercent" type="number" min="0.01" max="5" step="0.01" value="0.5" required>
             </label>
             <label class="field" for="trader-point">VALUE PER POINT ($)
-              <input id="trader-point" name="pointValue" type="number" min="0.000001" max="1000000" step="any" value="50" required aria-describedby="trader-point-help">
+              <input id="trader-point" name="pointValue" type="number" min="0.000001" max="1000000" step="any" value="1" required aria-describedby="trader-point-help">
             </label>
             <label class="field" for="trader-reward">MIN. REWARD / RISK
               <input id="trader-reward" name="minRewardRisk" type="number" min="1" max="20" step="0.1" value="2" required>
@@ -83,8 +81,8 @@
         </fieldset>
 
         <div class="trader-actions">
-          <button class="btn btn-solid" type="submit" data-trader-submit disabled>ANALYZE CONTEXT <span aria-hidden="true">↗</span></button>
-          <button class="btn" type="button" data-trader-demo>RUN DEMO</button>
+          <button class="btn btn-solid" type="submit" data-trader-submit disabled>Analyze context <span aria-hidden="true">↗</span></button>
+          <button class="btn" type="button" data-trader-demo>Run offline demo</button>
         </div>
         <p class="trader-demo-help">Demo uses fictional prices with your risk settings. No API key required.</p>
         <p class="trader-feedback" role="status" aria-live="polite" data-trader-feedback>Checking provider configuration…</p>
@@ -92,16 +90,16 @@
     </section>
 
     <div class="trader-output-column">
-      <section class="panel trader-output" aria-labelledby="trader-output-title">
-        <header class="trader-panel-head">
-          <h2 id="trader-output-title"><span class="trader-section-number">02</span> AGENT BRIEFING</h2>
+      <section class="panel cortex-panel trader-output" aria-labelledby="trader-output-title">
+        <header class="trader-panel-head cortex-panel-head">
+          <h2 id="trader-output-title"><span class="trader-section-number">02</span> RESEARCH BRIEF</h2>
           <span class="trader-badge" data-trader-output-state>AWAITING INPUT</span>
         </header>
 
         <div class="trader-empty" data-trader-empty>
-          <div class="trader-empty-glyph" aria-hidden="true">[ <span>↗</span> ]</div>
+          <div class="trader-empty-glyph" aria-hidden="true"><span>◇</span></div>
           <p class="trader-micro">CONTEXT → THESIS → RISK → REVIEW</p>
-          <h3>A second set of eyes<br>on your next trade.</h3>
+          <h3>Every thesis needs evidence.</h3>
           <p>Give the agent your market context. Review its thesis, proposed levels, and calculated risk in one place.</p>
           <div class="trader-empty-stages" aria-label="Analysis workflow">
             <span><b>01</b> Read context</span>
@@ -115,8 +113,8 @@
         <div class="trader-result" data-trader-result hidden></div>
       </section>
 
-      <section class="panel trader-history" aria-labelledby="trader-history-title">
-        <header class="trader-panel-head">
+      <section class="panel cortex-panel trader-history" aria-labelledby="trader-history-title">
+        <header class="trader-panel-head cortex-panel-head">
           <h2 id="trader-history-title"><span class="trader-section-number">03</span> RECENT RUNS</h2>
           <span class="trader-micro" data-trader-history-count>0 RUNS</span>
         </header>

@@ -116,7 +116,7 @@ test("page preserves the terminal shell while a first load failure makes the API
   const service = { getCurrentWeek: async () => { throw new Error("provider secret body"); } };
   const agent = await authenticatedAgent(service);
 
-  await agent.get("/market-news").expect(200).expect(/CALENDAR DATA LINK OFFLINE/).expect(/data-market-news/);
+  await agent.get("/market-news").expect(200).expect(/Calendar source unavailable/).expect(/data-market-news/);
   const response = await agent.get("/api/market-news/events").expect(503);
   assert.deepEqual(response.body, {
     ok: false,

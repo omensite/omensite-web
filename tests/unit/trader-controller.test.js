@@ -165,7 +165,7 @@ test("explicit demo needs no key or market context and uses the visible risk set
   await tick();
   const payload = JSON.parse(calls[1].options.body);
   assert.equal(payload.mode, "demo");
-  assert.equal(payload.symbol, "ES");
+  assert.equal(payload.symbol, "SPY");
   assert.equal(payload.accountSize, 10000);
   assert.equal(payload.riskPercent, 0.25);
   assert.equal(payload.pointValue, 50);

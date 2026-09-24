@@ -16,7 +16,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
   const form = find("form");
   const field = (name) => form.elements.namedItem(name);
   const csrf = documentRef.querySelector('meta[name="csrf-token"]')?.content ?? "";
-  let providers = [], runs = [], savedDocuments = [], toolDefinitions = [], selected = null, ready = false, paidCallsEnabled = false, disposed = false, busy = false, timer, loading = false, generation = 0;
+  let providers = [], runs = [], savedDocuments = [], toolDefinitions = [], selected = null, brokerState = null, ready = false, paidCallsEnabled = false, disposed = false, busy = false, timer, loading = false, generation = 0;
   const requests = new Set(), listeners = [];
   const viewButtons = [...root.querySelectorAll("[data-brain-view]")];
   const viewPanels = [...root.querySelectorAll("[data-brain-panel]")];
@@ -28,10 +28,11 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
   } }) : null;
   function updateNetwork() {
     if (!disposed) network?.update({ providers, defaultProvider: field("provider").value, runs, selectedRun: selected,
-      documents: savedDocuments, toolDefinitions, paidCallsEnabled });
+      documents: savedDocuments, toolDefinitions, paidCallsEnabled, brokerState });
   }
   function selectView(view, { focus = false } = {}) {
     if (disposed || !viewPanels.some((panel) => panel.dataset.brainPanel === view)) return;
+    const previousView = root.dataset.brainActiveView;
     for (const panel of viewPanels) panel.hidden = panel.dataset.brainPanel !== view;
     for (const button of viewButtons) {
       const active = button.dataset.brainView === view;
@@ -41,6 +42,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     root.dataset.brainActiveView = view;
     network?.refresh();
     if (view === "robinhood") void robinhood?.open();
+    if (view === "network" && previousView === "robinhood") void refreshReadiness();
   }
   function on(element, event, handler) { element.addEventListener(event, handler); listeners.push(() => element.removeEventListener(event, handler)); }
   function el(tag, text, className) { const value = documentRef.createElement(tag); if (text !== undefined) value.textContent = String(text ?? ""); if (className) value.className = className; return value; }
@@ -101,8 +103,9 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     try {
       const state = await request("/api/brain/state"); if (disposed) return;
       paidCallsEnabled = state.paidCallsEnabled === true;
+      brokerState = state.robinhoodState ?? null;
       providers = state.providers ?? []; renderReadiness(state.readiness); updateButtons();
-    } catch { if (!disposed) { paidCallsEnabled = false; renderReadiness(); updateButtons(); } }
+    } catch { if (!disposed) { paidCallsEnabled = false; brokerState = null; renderReadiness(); updateButtons(); } }
   }
   function metrics(value = {}) {
     const data = [
@@ -186,13 +189,13 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     if (loading || disposed) return; loading = true;
     try {
       const state = await request("/api/brain/state"); if (disposed) return;
-      providers = state.providers ?? []; runs = state.runs ?? []; paidCallsEnabled = state.paidCallsEnabled === true;
+      providers = state.providers ?? []; runs = state.runs ?? []; paidCallsEnabled = state.paidCallsEnabled === true; brokerState = state.robinhoodState ?? null;
       toolDefinitions = state.toolDefinitions ?? [];
       if (!ready && state.defaultProvider) field("provider").value = state.defaultProvider;
       ready = true; renderDocuments(state.documents); renderHistory(); renderReadiness(state.readiness);
       const current = runs.find((run) => run.id === selected?.id) ?? (!selected ? runs[0] : null);
       if (current) { render(current); schedulePoll(); } else if (!selected) feedback(paidCallsEnabled ? "Ready. Start a mission or explore the workflow with a demo." : paidLockMessage);
-    } catch (error) { paidCallsEnabled = false; renderReadiness(); feedback(error.message, true); }
+    } catch (error) { paidCallsEnabled = false; brokerState = null; renderReadiness(); feedback(error.message, true); }
     finally { loading = false; if (!disposed) updateButtons(); }
   }
   function input(mode) {

@@ -2,6 +2,7 @@ import { runLoginSequence, AUTH_LINES } from "./login-sequence.js";
 import { startMatrix } from "./matrix-renderer.js";
 import { startSphereRenderer } from "./sphere-renderer.js";
 import { initializeDiscordLogin } from "./discord-login.js";
+import { initializeColorTheme } from "./redline-theme.js";
 
 function replaceEntryWithStream({ documentRef, entry, root, reducedMotion, redirectTo, windowRef, stopSphere }) {
   const stream = documentRef.createElement("div");
@@ -65,6 +66,7 @@ export function initializeLoginController({
   }
 
   const root = documentRef.querySelector("[data-login-root]");
+  const stopTheme = initializeColorTheme({ documentRef, windowRef });
   const reducedMotion = Boolean(windowRef.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   let stopSphere = startSphereRenderer({ documentRef, windowRef, reducedMotion });
   const stopLoginSphere = () => {
@@ -92,6 +94,7 @@ export function initializeLoginController({
     dispose() {
       discord?.dispose();
       stopLoginSphere();
+      stopTheme();
     },
   };
 }

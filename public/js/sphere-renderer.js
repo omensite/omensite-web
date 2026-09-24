@@ -48,6 +48,7 @@ export function buildSphereFrame(cols, rows, angle) {
 }
 
 export function startSphereRenderer({ documentRef, windowRef, reducedMotion = false }) {
+  if (!documentRef.querySelector("[data-sphere]")) return () => {};
   let angle = 0;
   const render = () => {
     angle += 0.09;

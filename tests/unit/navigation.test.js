@@ -8,7 +8,7 @@ test("clean routes resolve to the expected view metadata", () => {
     title: "ALERTS :: S&R",
     path: "/alerts/support-resistance",
     uri: "alerts/support-resistance",
-    description: "Support and resistance alerts presented with the same live terminal-style feedback.",
+    description: "Plan the support, resistance, and price reactions you want to monitor.",
     view: "alerts-sr",
     capability: "base",
   });

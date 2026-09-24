@@ -11,6 +11,7 @@ import { startSphereRenderer } from "./sphere-renderer.js";
 import { createTransitionController } from "./transition-controller.js";
 import { createDrawerController, setActiveNavigation, startStatusUpdates } from "./ui-utils.js";
 import { initializePageInteractions } from "./page-interactions.js";
+import { initializeColorTheme } from "./redline-theme.js";
 
 const shellInstances = new WeakMap();
 
@@ -43,6 +44,7 @@ function hydrateJournalCount(root, service) {
 
 export function initializeAppShell({ documentRef = document, windowRef = window, fetchImpl = window.fetch.bind(window), initializePage = () => {}, journalService } = {}) {
   if (shellInstances.has(documentRef)) return shellInstances.get(documentRef);
+  const stopTheme = initializeColorTheme({ documentRef, windowRef });
   const reducedMotion = Boolean(windowRef.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   const transition = createTransitionController({ documentRef, reducedMotion });
   const drawer = createDrawerController({ documentRef });
@@ -128,6 +130,7 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
       drawer.dispose();
       stopSpheres();
       stopStatus();
+      stopTheme();
       logoutButton?.removeEventListener("click", logout);
       shellInstances.delete(documentRef);
     },

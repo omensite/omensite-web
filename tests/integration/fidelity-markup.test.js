@@ -4,7 +4,7 @@ import request from "supertest";
 import { JSDOM } from "jsdom";
 import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
-test("server pages retain the accepted panel and terminal calendar geometry hooks", async () => {
+test("server pages expose Cortex workspaces with preserved interactive calendar and access hooks", async () => {
   const agent = await loginTestOperator(createTestApp({
     sessionSecret: "test-secret",
     marketNewsService: {
@@ -26,7 +26,14 @@ test("server pages retain the accepted panel and terminal calendar geometry hook
       }),
     },
   }));
-  await agent.get("/home").expect(200).expect(/grid grid-4/).expect(/grid grid-2-1/).expect(/panel-kicker/).expect(/quicklink/);
+  const home = await agent.get("/home").expect(200);
+  const homeDom = new JSDOM(home.text);
+  assert.equal(homeDom.window.document.querySelectorAll(".cortex-kpis .cortex-kpi").length, 4);
+  assert.ok(homeDom.window.document.querySelector('.cortex-home-command a[href="/brain"][data-nav-link]'));
+  assert.ok(homeDom.window.document.querySelector('.cortex-home-command a[href="/brain?view=robinhood"][data-nav-link]'));
+  assert.equal(homeDom.window.document.querySelectorAll(".cortex-workspace-grid .cortex-workspace-card").length, 6);
+  assert.equal(homeDom.window.document.querySelector("[data-journal-count]").textContent, "—");
+  homeDom.window.close();
   await agent.get("/indicators").expect(200)
     .expect(/indicator-console/).expect(/indicator-catalog-row/).expect(/indicator-request/).expect(/terminal-check/);
   const response = await agent.get("/market-news").expect(200);
@@ -34,10 +41,10 @@ test("server pages retain the accepted panel and terminal calendar geometry hook
   assert.match(response.text, /calendar-toolbar/);
   assert.match(response.text, /calendar-event/);
   assert.match(response.text, /calendar-state/);
-  await agent.get("/alerts/ict").expect(200).expect(/class="toolbar"/).expect(/section-label/).expect(/class="empty"/);
+  await agent.get("/alerts/ict").expect(200).expect(/cortex-panel/).expect(/data-alert-standby/).expect(/No signal rules configured/);
 });
 
-test("Indicators retain open terminal-list geometry instead of nested card styling", async () => {
+test("Indicators retain a readable script grid and access form in Cortex panels", async () => {
   const app = createTestApp();
   const agent = await loginTestOperator(app);
   const [response, stylesheet] = await Promise.all([
@@ -55,10 +62,12 @@ test("Indicators retain open terminal-list geometry instead of nested card styli
   assert.equal(rowStyle.display, "grid");
   assert.equal(consoleStyle.borderTopWidth, "1px");
   assert.equal(formStyle.display, "grid");
+  assert.ok(dom.window.document.querySelector(".indicator-console.cortex-panel"));
+  assert.ok(dom.window.document.querySelector(".indicator-request.cortex-panel"));
   dom.window.close();
 });
 
-test("Admin uses open terminal rails with dense action rows and mobile field labels", async () => {
+test("Admin uses Cortex panels with dense action rows and mobile field labels", async () => {
   const app = createTestApp();
   const agent = await loginTestOperator(app);
   const [response, stylesheet] = await Promise.all([
@@ -77,6 +86,7 @@ test("Admin uses open terminal rails with dense action rows and mobile field lab
   assert.equal(dom.window.getComputedStyle(rail).borderTopWidth, "1px");
   assert.equal(dom.window.getComputedStyle(actions).display, "flex");
   assert.equal(userRow.closest(".panel"), null);
+  assert.ok(userRow.closest(".cortex-panel"));
   assert.ok([...userRow.children].every((child) => child.hasAttribute("data-field")));
   dom.window.close();
 });

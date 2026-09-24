@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import request from "supertest";
 import { JSDOM } from "jsdom";
 import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
@@ -21,8 +20,8 @@ test("protected clean routes render full documents and fragments", async () => {
   assert.match(response.text, /data-sidebar/);
   assert.match(response.text, /data-main/);
   assert.match(response.text, /OMENSITE/);
-  assert.match(response.text, /root@omensite:~\$/);
-  assert.match(response.text, /SESSION 01 \/ AUTHORIZED/);
+  assert.match(response.text, /DISCORD SSO/);
+  assert.doesNotMatch(response.text, /root@omensite:~\$|SESSION 01 \/ AUTHORIZED/);
 
   const cases = [
     ["/home", "omensite://home"],
@@ -49,31 +48,34 @@ test("home quick-access links opt into fragment navigation", async () => {
   const agent = await loginTestOperator(createTestApp());
 
   const response = await agent.get("/home").expect(200);
-  for (const path of ["/indicators", "/market-news", "/alerts/ict", "/alerts/support-resistance", "/journal"]) {
-    assert.match(response.text, new RegExp(`<a href="${path}" data-nav-link>`));
+  const dom = new JSDOM(response.text);
+  for (const path of ["/brain", "/brain?view=robinhood", "/trader", "/indicators", "/market-news", "/alerts/ict", "/alerts/support-resistance", "/journal"]) {
+    assert.ok(dom.window.document.querySelector(`[data-route-view] a[href="${path}"][data-nav-link]`), `${path} uses fragment navigation`);
   }
+  dom.window.close();
 });
 
-test("server-rendered shell anchors retain terminal row styling and route-title markup", async () => {
+test("server-rendered Cortex shell exposes semantic navigation, page heading, and ordered theme styles", async () => {
   const app = createTestApp();
   const agent = await loginTestOperator(app);
 
-  const [response, stylesheet] = await Promise.all([
-    agent.get("/home").expect(200),
-    request(app).get("/css/omensite.css").expect(200),
-  ]);
+  const response = await agent.get("/home").expect(200);
   const dom = new JSDOM(response.text);
-  const style = dom.window.document.createElement("style");
-  style.textContent = stylesheet.text;
-  dom.window.document.head.append(style);
-
-  const navLink = dom.window.document.querySelector("[data-sidebar] .navitem");
-  const routeTitle = dom.window.document.querySelector(".route-title");
-  const navLinkStyle = dom.window.getComputedStyle(navLink);
-
-  assert.equal(navLinkStyle.display, "block");
-  assert.equal(navLinkStyle.textDecoration, "none");
-  assert.equal(routeTitle.tagName, "DIV");
+  const document = dom.window.document;
+  const navigation = document.querySelector('[data-sidebar] nav[aria-label="Workspace navigation"]');
+  const activeLink = navigation.querySelector('[data-nav-key="home"]');
+  assert.equal(activeLink.getAttribute("aria-current"), "page");
+  assert.match(activeLink.textContent, /Overview/);
+  assert.ok(navigation.querySelector('[href="/brain"][data-nav-link]'));
+  assert.equal(document.querySelector(".route-title").tagName, "H1");
+  assert.equal(document.querySelectorAll("[data-route-view] h1").length, 1);
+  const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
+  const styleIndex = (name) => stylesheets.findIndex((href) => href.endsWith(`/css/${name}.css`));
+  assert.ok(styleIndex("brain") >= 0);
+  assert.ok(styleIndex("redline") > styleIndex("brain"));
+  assert.ok(styleIndex("redline-surfaces") > styleIndex("redline"));
+  assert.equal(document.querySelectorAll('[data-color-theme]').length, 2);
+  dom.window.close();
 });
 
 test("public journal fragments expose the concrete request path", async () => {

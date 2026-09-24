@@ -75,6 +75,26 @@ test("all brain mutations require the session CSRF token", async (t) => {
   await client.delete("/api/brain/documents/id").expect(403).expect("Cache-Control", "no-store");
 });
 
+test("Cortex broker summary is owner-scoped and excludes credentials, account data and action history", async (t) => {
+  const owners = [], secret = "credential-must-stay-server-side";
+  const app = makeApp(t, { robinhoodService: { async state(owner) {
+    owners.push(owner);
+    return { configured: true, connected: true, liveEnabled: false, paused: true,
+      storage: { kind: "postgres", persistent: true, databaseUrl: secret },
+      connection: { sealed: secret }, access_token: secret,
+      snapshots: [{ tool: "get_accounts", result: { accountNumber: secret } }],
+      actions: [{ arguments: { account: secret } }], events: [{ detail: secret }],
+    };
+  } } });
+  const client = await loginTestOperator(app, { username: "broker-summary" });
+  const state = await client.get("/api/brain/state?ownerId=discord:another-owner").expect(200);
+  assert.deepEqual(owners, ["discord:broker-summary"]);
+  assert.deepEqual(state.body.robinhoodState, { configured: true, connected: true, liveEnabled: false, paused: true, storage: { kind: "postgres", persistent: true } });
+  assert.doesNotMatch(state.text, /credential-must-stay-server-side|accountNumber|access_token|databaseUrl/);
+  assert.equal(Object.hasOwn(state.body, "snapshots"), false);
+  assert.equal(Object.hasOwn(state.body, "actions"), false);
+});
+
 test("run review is owner isolated, version checked, and saves approved research memory once", async (t) => {
   const app = makeApp(t);
   const first = await loginTestOperator(app, { username: "brain-first" });

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { buildBrainNetworkData, createBrainNetwork } from "../../public/js/brain/brain-network.js";
+import { buildMatrixBrain, BRAIN_REGIONS } from "../../public/js/brain/brain-network-renderer.js";
 
 const tools = ["context.read", "knowledge.search", "memory.search", "journal.search", "calendar.read", "risk.check"].map((name) => ({ name, description: `${name} description` }));
 const run = { id: "r1", status: "completed", input: { symbol: "ES", mode: "demo", provider: "gemini", objective: "Review the supplied market context" },
@@ -20,6 +21,7 @@ function canvasHarness({ reducedMotion = false } = {}) {
     clearRect() { paints += 1; operations = []; },
     setTransform() {}, createRadialGradient() { return { addColorStop() {} }; },
   };
+  for (const name of ["fillStyle", "globalCompositeOperation"]) Object.defineProperty(context, name, { set(value) { operations.push([name, value]); } });
   for (const name of ["fillRect", "fillText", "beginPath", "moveTo", "lineTo", "quadraticCurveTo", "stroke", "arc", "ellipse"]) {
     context[name] = (...args) => operations.push([name, ...args]);
   }
@@ -69,6 +71,17 @@ test("tool connections follow the most recent valid recorded agent", () => {
   assert.equal(data.nodes.find((node) => node.id === "tool:risk.check").parent, "agent:strategist");
 });
 
+test("planner status follows validated plan evidence and stopped runs never show active roles", () => {
+  const planner = (selectedRun) => buildBrainNetworkData({ selectedRun }).nodes.find((node) => node.id === "agent:planner");
+  assert.equal(planner({ status: "running", trace: [{ agent: "planner", type: "step" }] }).status, "running");
+  assert.equal(planner({ status: "awaiting_approval", trace: [{ agent: "planner", type: "plan" }] }).status, "complete");
+  assert.equal(planner({ status: "completed", plan: [{ role: "researcher" }], trace: [] }).status, "complete");
+  assert.equal(planner({ status: "failed", trace: [{ agent: "planner", type: "step" }] }).status, "failed");
+  assert.equal(planner({ status: "completed" }).status, "idle", "no evidence cannot imply planning completed");
+  const stopped = buildBrainNetworkData({ selectedRun: { status: "cancelled", graph: { nodes: [{ role: "researcher", status: "running" }] } } });
+  assert.equal(stopped.nodes.find((node) => node.id === "agent:researcher").status, "cancelled");
+});
+
 test("provider routes use saved mission overrides before the selected default", () => {
   const providers = [{ id: "claude", label: "Claude", model: "c-test" }, ...state.providers];
   const initial = buildBrainNetworkData({ providers, defaultProvider: "claude" });
@@ -78,6 +91,8 @@ test("provider routes use saved mission overrides before the selected default", 
   assert.match(routed.nodes.find((node) => node.id === "agent:planner").provider, /Claude/);
   assert.match(routed.nodes.find((node) => node.id === "agent:researcher").provider, /Gemini/);
   assert.match(buildBrainNetworkData(state).nodes.find((node) => node.id === "agent:planner").provider, /Offline demo · no model calls/);
+  const missingModel = buildBrainNetworkData({ providers: [{ id: "gemini", label: "Gemini", model: "" }], defaultProvider: "gemini" });
+  assert.equal(missingModel.nodes.find((node) => node.id === "agent:planner").provider, "Gemini · Not configured · default route");
 });
 
 test("accessible controls work without canvas or paid access", (t) => {
@@ -127,11 +142,64 @@ test("polling preserves keyboard focus on a surviving node and its inspector act
 });
 
 test("zoom changes the projection and reset restores it within bounds", (t) => {
-  const app = fixture(t), planner = app.find('[data-network-node="agent:planner"]'), original = planner.style.left;
-  app.find('[aria-label="Zoom in"]').click(); assert.equal(app.find(".brain-network-zoom").textContent, "110%"); assert.notEqual(planner.style.left, original);
+  const harness = canvasHarness({ reducedMotion: true }), app = fixture(t, {}, harness.install), original = harness.snapshot();
+  app.find('[aria-label="Zoom in"]').click(); assert.equal(app.find(".brain-network-zoom").textContent, "110%"); assert.notEqual(harness.snapshot(), original);
   for (let index = 0; index < 20; index++) app.find('[aria-label="Zoom in"]').click();
   assert.equal(app.find(".brain-network-zoom").textContent, "145%"); assert.equal(app.find('[aria-label="Zoom in"]').disabled, true);
-  app.find('[aria-label="Reset network view"]').click(); assert.equal(planner.style.left, original); assert.equal(app.find(".brain-network-zoom").textContent, "100%");
+  app.find('[aria-label="Reset network view"]').click(); assert.equal(harness.snapshot(), original); assert.equal(app.find(".brain-network-zoom").textContent, "100%");
+});
+
+test("Redline geometry is deterministic and contains both hemispheres, cerebellum and stem", () => {
+  const points = buildMatrixBrain();
+  assert.equal(points.length, 3400); assert.deepEqual(points, buildMatrixBrain());
+  assert.deepEqual(new Set(points.map((point) => point.region)), new Set(BRAIN_REGIONS));
+  assert.ok(points.every((point) => [point.x, point.y, point.z].every(Number.isFinite)));
+  assert.equal(points.filter((point) => point.region === "cerebellum").length, 442);
+  assert.ok(points.some((point) => point.region === "stem" && point.y < -1));
+});
+
+test("eight decorative lobes map to four actual agents and four explicitly named support modules", (t) => {
+  const app = fixture(t), data = buildBrainNetworkData();
+  assert.equal(data.nodes.filter((node) => node.kind === "agent").length, 4);
+  assert.equal(data.nodes.filter((node) => node.kind === "module").length, 4);
+  assert.equal(app.host.querySelectorAll('[data-lobe-node]').length, 8);
+  app.find('[data-lobe-node="module:robinhood"]').click();
+  assert.match(app.find(".brain-network-inspector").textContent, /SUPPORT MODULE/);
+  assert.match(app.find(".brain-network-inspector").textContent, /check connection and submission controls/);
+  assert.match(app.find(".brain-network-telemetry").textContent, /No selected mission/);
+  assert.doesNotMatch(app.host.textContent, /win rate|\+\d+%|TopStepX/i);
+});
+
+test("disassemble and reassemble controls preserve reduced motion and never invoke navigation", (t) => {
+  const harness = canvasHarness({ reducedMotion: true }), navigations = [], app = fixture(t, { onNavigate: (panel) => navigations.push(panel) }, harness.install);
+  const original = harness.snapshot(), control = app.find(".brain-network-disassemble");
+  control.click(); assert.equal(control.getAttribute("aria-pressed"), "true"); assert.notEqual(harness.snapshot(), original);
+  assert.equal(harness.frames.size, 0); assert.match(app.find(".brain-network-coordinate").textContent, /DISASSEMBLED/);
+  control.click(); assert.equal(harness.snapshot(), original);
+  app.find('[aria-label="Reassemble brain particles"]').click(); assert.equal(harness.frames.size, 0);
+  assert.deepEqual(navigations, []);
+});
+
+test("mobile lobe labels remain separated across a full dragged orbit", (t) => {
+  const harness = canvasHarness({ reducedMotion: true }), app = fixture(t, {}, (window) => {
+    harness.install(window);
+    window.HTMLElement.prototype.getBoundingClientRect = () => ({ width: 342, height: 430, left: 0, top: 0 });
+  });
+  const stage = app.find('.brain-network-stage');
+  stage.dispatchEvent(new app.dom.window.MouseEvent('pointerdown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
+  for (let index = 0; index <= 32; index++) {
+    stage.dispatchEvent(new app.dom.window.MouseEvent('pointermove', { clientX: index * 2 * Math.PI / 32 / .008, clientY: 0, bubbles: true }));
+    const sides = new Map();
+    for (const item of app.host.querySelectorAll('[data-lobe-node]')) { const positions = sides.get(item.style.left) ?? []; positions.push(parseFloat(item.style.top)); sides.set(item.style.left, positions); }
+    for (const positions of sides.values()) { positions.sort((a, b) => a - b); for (let index = 1; index < positions.length; index++) assert.ok(positions[index] - positions[index - 1] >= 35, 'lobe buttons must not overlap'); }
+  }
+});
+
+test("run metrics come only from selected recorded usage with explicit unknown pricing", (t) => {
+  const app = fixture(t); app.instance.update({ ...state, selectedRun: { ...run, metrics: { modelCalls: 3, toolCalls: 4, inputTokens: 1200, outputTokens: 80, estimatedCostUsd: null, elapsedMs: 1450, usageUnknownCalls: 1 } } });
+  const text = app.find(".brain-network-telemetry").textContent;
+  assert.match(text, /MODEL CALLS3/); assert.match(text, /1,280/); assert.match(text, /1 calls with unknown usage/); assert.match(text, /Provider pricing unavailable/);
+  assert.match(app.find(".brain-network-recent").textContent, /OFFLINE DEMO/);
 });
 
 test("empty state does not invent missions or activity", (t) => {
@@ -160,6 +228,22 @@ test("reduced-motion preference starts paused and does not schedule decorative r
   assert.equal(app.find(".brain-network-shell").dataset.motion, "paused");
   harness.setReducedMotion(false); assert.equal(harness.frames.size, 1);
   harness.setReducedMotion(true); assert.equal(harness.frames.size, 0);
+});
+
+test("theme changes repaint the paused canvas with the current palette and disposal removes the listener", (t) => {
+  const harness = canvasHarness({ reducedMotion: true }), app = fixture(t, {}, harness.install);
+  const root = app.dom.window.document.documentElement;
+  root.dataset.theme = "daylight";
+  // Set on the host as jsdom does not resolve inherited custom properties.
+  app.host.style.setProperty("--red", "#cf0f22");
+  app.host.style.setProperty("--red-glow", "#e0303f");
+  app.dom.window.document.dispatchEvent(new app.dom.window.Event("omensite:themechange"));
+  assert.match(harness.snapshot(), /#cf0f22/);
+  assert.doesNotMatch(harness.snapshot(), /"lighter"/);
+  assert.equal(harness.frames.size, 0);
+  const paints = harness.paints; app.instance.dispose();
+  app.dom.window.document.dispatchEvent(new app.dom.window.Event("omensite:themechange"));
+  assert.equal(harness.paints, paints);
 });
 
 test("idle decorative animation continues at a bounded paint rate and pause preserves its exact phase", (t) => {

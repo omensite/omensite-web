@@ -30,6 +30,28 @@ test("Gemini defaults and unavailable role routes disable paid missions but keep
   assert.equal(app.find("start").disabled, true); assert.equal(app.find("demo").disabled, false);
   assert.match(app.find("provider").textContent, /API key/); assert.equal(app.root.querySelector('input[type="password"]'), null);
 });
+
+test("Cortex consumes the broker summary and clears stale connection claims on a failed refresh", async (t) => {
+  let fail = false;
+  const app = fixture(t, async () => fail ? response({ message: "Unavailable" }, 503) : response({ ...state, robinhoodState: { configured: true, connected: true, liveEnabled: false, paused: true, storage: { kind: "postgres", persistent: true } } }));
+  await tick();
+  app.root.querySelector('[data-lobe-node="module:robinhood"]').click();
+  const inspector = app.root.querySelector('.brain-network-inspector');
+  assert.match(inspector.textContent, /CONNECTED/); assert.match(inspector.textContent, /Live submissions disabled/);
+  fail = true; app.find('map-refresh').click(); await tick();
+  assert.match(inspector.textContent, /NOT CHECKED/); assert.doesNotMatch(inspector.textContent, /Live submissions disabled|CONNECTED/);
+});
+
+test("returning from Robinhood refreshes local connection switches without starting model or broker calls", async (t) => {
+  const calls = [], broker = { configured: true, connected: true, liveEnabled: false, paused: true, storage: { kind: "postgres", persistent: true }, tools: [], snapshots: [], actions: [], events: [], groups: [], missing: [] };
+  const app = fixture(t, async (url) => { calls.push(url); return response(url === "/api/robinhood/state" ? broker : { ...state, robinhoodState: broker }); });
+  await tick(); app.root.querySelector('[data-brain-view="robinhood"]').click(); await tick();
+  broker.connected = false;
+  app.root.querySelector('[data-brain-view="network"]').click(); await tick();
+  app.root.querySelector('[data-lobe-node="module:robinhood"]').click();
+  assert.match(app.root.querySelector('.brain-network-inspector').textContent, /NOT CONNECTED/);
+  assert.deepEqual(calls, ["/api/brain/state", "/api/robinhood/state", "/api/brain/state"]);
+});
 test("demo submits explicit role routes and budgets with CSRF then renders review", async (t) => {
   const calls = []; const app = fixture(t, async (url, options) => { calls.push({ url, options }); return response(url.endsWith("state") ? state : { run: run() }); }); await tick();
   app.field("route_critic").value = "claude"; app.field("maxCostUsd").value = "0.25"; app.find("demo").click(); await tick();

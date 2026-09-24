@@ -1,13 +1,7 @@
-<div class="statusbar" data-statusbar>
-  <button class="navtoggle" type="button" title="Toggle navigation" aria-label="Toggle navigation" aria-expanded="false" data-nav-toggle>[≡]</button>
-  <div class="statusbar-live"><span class="dot idle"></span>LIVE FEED</div>
-  <div class="ticker" aria-label="Market feed status">
-    <div class="ticker-track">
-      <% ["MARKET FEED :: STANDBY", "NO SYMBOLS SUBSCRIBED", "AWAITING DATA SOURCE", "FEED SOCKET :: CLOSED", "MARKET FEED :: STANDBY", "NO SYMBOLS SUBSCRIBED", "AWAITING DATA SOURCE", "FEED SOCKET :: CLOSED"].forEach((segment) => { %>
-        <span><span><%= segment %></span></span>
-      <% }) %>
-    </div>
-  </div>
-  <div class="statusbar-session" title="<%= page.operator?.roles?.join(", ") ?? "" %>">SESSION 01 / AUTHORIZED</div>
-  <time class="statusbar-clock" data-clock></time>
-</div>
+<header class="statusbar" data-statusbar>
+  <button class="navtoggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-nav-toggle>≡</button>
+  <a class="cortex-brand" href="/home" data-nav-link aria-label="Omensite home">OMEN<span>SITE</span><small>TRADING INTELLIGENCE</small></a>
+  <% if (typeof designPreview !== 'undefined' && designPreview) { %><span class="cortex-preview">DESIGN PREVIEW · ISOLATED DATA</span><% } %>
+  <div class="cortex-header-controls"><div class="cortex-theme" role="group" aria-label="Color theme"><button type="button" data-color-theme="core" aria-pressed="true">CORE</button><button type="button" data-color-theme="daylight" aria-pressed="false">DAYLIGHT</button></div><span class="statusbar-session" title="<%= page.operator?.roles?.join(', ') ?? '' %>"><span aria-hidden="true">◆</span> DISCORD SSO</span><time class="statusbar-clock" data-clock></time></div>
+</header>
+<div class="cortex-market-strip" aria-label="Market feed status"><span class="cortex-strip-label">MARKETS</span><span>STOCKS &amp; ETFs</span><span>OPTIONS</span><span>CRYPTO</span><span class="cortex-strip-status">ROBINHOOD / ON-DEMAND DATA</span></div>

@@ -1,22 +1,11 @@
 <aside class="sidebar" data-sidebar>
-  <pre class="sidebar-sphere" data-sphere data-cols="26" data-rows="11" aria-hidden="true">       ·············
-    ···················
-  ······ OMENSITE ······
-    ···················
-       ·············</pre>
-  <div class="sidebar-brand">OMENSITE</div>
-  <div class="sidebar-prompt">root@omensite:~$</div>
-
-  <nav aria-label="Terminal navigation">
-    <% page.navigation.forEach((item, index) => { %>
-      <a class="navitem<%= item.key === page.route.key || (item.key === "journal" && ["journal-new", "journal-public"].includes(page.route.key)) ? " active" : "" %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>" data-required-capability="<%= item.capability %>"<% if (item.key === page.route.key) { %> aria-current="page"<% } %>><%= index === page.navigation.length - 1 ? "`-- " : "|-- " %><%= item.uri === "alerts/support-resistance" ? "alerts/s-r" : item.uri %></a>
+  <div class="cortex-nav-label">WORKSPACE <span>01</span></div>
+  <nav aria-label="Workspace navigation">
+    <% const labels = {home: 'Overview', brain: 'Agent brain', trader: 'Research', indicators: 'Indicators', 'market-news': 'Market calendar', 'alerts-ict': 'ICT alerts', 'alerts-sr': 'S/R alerts', journal: 'Trade journal', admin: 'Administration'}; %>
+    <% page.navigation.forEach((item, index) => { const active = item.key === page.route.key || (item.key === 'journal' && ['journal-new', 'journal-public'].includes(page.route.key)); %>
+      <a class="navitem<%= active ? ' active' : '' %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>" data-required-capability="<%= item.capability %>"<% if (active) { %> aria-current="page"<% } %>><span class="cortex-nav-index" aria-hidden="true"><%= String(index + 1).padStart(2, '0') %></span><span><%= labels[item.key] ?? item.title ?? item.uri %></span></a>
     <% }) %>
   </nav>
-
-  <div class="sidebar-foot">
-    <div>UPTIME <span data-uptime>0m 0s</span></div>
-    <div>ALERTS ARMED 0</div>
-    <div>SYNC: <span class="standby"><%= page.operator?.authMode === "discord" ? "DISCORD" : "DEMO" %></span></div>
-    <button class="btn btn-danger sidebar-logout" type="button" data-logout>[ LOGOUT ]</button>
-  </div>
+  <div class="cortex-nav-note"><span class="cortex-node-mark" aria-hidden="true">▰ ▪ ▪</span><strong>YOUR COMMAND CENTER</strong><p>Research. Review.<br>Execute with intent.</p></div>
+  <div class="sidebar-foot"><span class="cortex-nav-label">OPERATOR</span><strong class="cortex-operator"><%= page.operator?.displayName ?? page.operator?.username ?? 'Authenticated operator' %></strong><div class="cortex-session-detail"><span>SESSION</span><span data-uptime>0m 0s</span></div><button class="btn sidebar-logout" type="button" data-logout>SIGN OUT ↗</button></div>
 </aside>
