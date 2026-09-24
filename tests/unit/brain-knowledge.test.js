@@ -89,3 +89,23 @@ test("retrieval bounds query input and handles Unicode and markup as plain sourc
   await assert.rejects(knowledge.search("owner", {}), { code: "BRAIN_INVALID_INPUT" });
   await assert.rejects(knowledge.addDocument("owner", { title: "Too large", text: "x".repeat(50_001) }), { code: "BRAIN_INVALID_INPUT" });
 });
+
+test("indexed retrieval uses bounded candidates, kind filtering and verbatim positive citations", async () => {
+  const calls = [];
+  const knowledge = createBrainKnowledge({ repository: {
+    listDocuments() { throw new Error("Indexed retrieval must not scan the complete document collection"); },
+    async searchDocuments(...args) {
+      calls.push(args);
+      return [
+        { id: "match", title: "Reviewed playbook", kind: "memory", text: "Review Équité and liquidity before the next session." },
+        { id: "irrelevant", title: "Other", kind: "memory", text: "Unrelated source text." },
+      ];
+    },
+  } });
+  const result = await knowledge.search("owner", "the ÉQUITÉ Équité", { kind: "memory" });
+  assert.deepEqual(calls, [["owner", ["équité"], { kind: "memory", limit: 64 }]]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].documentId, "match");
+  assert.equal(result[0].excerpt, "Review Équité and liquidity before the next session.");
+  assert.ok(result[0].score > 0);
+});

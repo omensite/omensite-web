@@ -13,6 +13,7 @@ export function createBrainRoutes({ brainService, brainKnowledge, brainTools, br
   router.get("/brain", access, createPageController().show(ROUTE_BY_KEY.brain));
   router.get("/api/brain/state", access, controller.state);
   router.post("/api/brain/evals", access, requireCsrf, controller.evaluations);
+  router.get("/api/brain/runs", access, controller.runs);
   router.get("/api/brain/runs/:id", access, controller.getRun);
   router.post("/api/brain/runs", access, requireCsrf, controller.start);
   router.post("/api/brain/runs/:id/decision", access, requireCsrf, controller.decision);

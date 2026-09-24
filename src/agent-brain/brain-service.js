@@ -537,14 +537,19 @@ export function createBrainService({ repository, knowledge, modelGateway, tools,
   }
 
   return {
-    async getState(owner) {
+    async getState(owner, { runLimit = 20 } = {}) {
       const key = ownerKey(owner);
-      const runs = await recover(key, await repository.listRuns(key, { limit: 100 }));
+      const limit = Number.isInteger(runLimit) ? Math.max(1, Math.min(51, runLimit)) : 20;
+      const runs = await recover(key, await repository.listRuns(key, { limit }));
       const status = modelGateway.getOwnerStatus ? await modelGateway.getOwnerStatus(key) : modelGateway.getStatus();
       return { ...status, paidCallsEnabled: status.paidCallsEnabled === true,
         providers: (status.providers ?? []).map((provider) => ({ ...provider, pricingConfigured: Boolean(modelGateway.getPricing?.(provider.id)) })),
         storage: repository.getStorageStatus?.() ?? { kind: "unknown", persistent: false },
-        limits: { ...DEFAULT_LIMITS }, runs: runs.slice(0, 20) };
+        limits: { ...DEFAULT_LIMITS }, runs };
+    },
+
+    async listRuns(owner, options) {
+      return repository.listRuns(ownerKey(owner), options);
     },
 
     async getRun(owner, id) {

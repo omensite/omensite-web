@@ -20,3 +20,15 @@ test("database TLS is explicit and development may run without PostgreSQL", () =
   assert.equal(readDatabaseConfig({ env: { DATABASE_URL: "postgres://db/app", DATABASE_SSL: "require" } }).ssl, true);
   assert.throws(() => readDatabaseConfig({ env: { DATABASE_URL: "postgres://db/app", DATABASE_SSL: "sometimes" } }), /DATABASE_SSL/);
 });
+
+test("database pool and time budgets reject unsafe or malformed configuration", () => {
+  for (const [key, values] of Object.entries({ DATABASE_POOL_MAX: ["0", "51", "NaN", "2.5"],
+    DATABASE_CONNECT_TIMEOUT_MS: ["0", "30001"], DATABASE_STATEMENT_TIMEOUT_MS: ["-1", "120001"],
+    DATABASE_LOCK_TIMEOUT_MS: ["0", "30001"] })) {
+    for (const value of values) assert.throws(() => readDatabaseConfig({ env: { [key]: value }, nodeEnvironment: "test" }), new RegExp(key));
+  }
+  const config = readDatabaseConfig({ env: { DATABASE_POOL_MAX: "4", DATABASE_LOCK_TIMEOUT_MS: "1000" }, nodeEnvironment: "test" });
+  assert.equal(config.poolMax, 4);
+  assert.equal(config.lockTimeoutMs, 1000);
+  assert.equal(config.statementTimeoutMs, 10000);
+});

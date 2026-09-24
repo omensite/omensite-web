@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import { createNormalizedPostgresBrokerRepository } from "./postgres-broker-repository.js";
 
 export const emptyBrokerWorkspace = () => ({ connection: null, tools: [], snapshots: [], actions: [], events: [], paused: true });
 const copy = (value) => structuredClone(value);
@@ -51,25 +52,5 @@ export function createSqliteBrokerRepository(filename) {
   };
 }
 export function createPostgresBrokerRepository(pool) {
-  return {
-    getStorageStatus: () => ({ kind: "postgres", persistent: true }),
-    async read(owner) { return (await pool.query("SELECT payload FROM broker_workspaces WHERE owner_id=$1", [validOwner(owner)])).rows[0]?.payload ?? emptyBrokerWorkspace(); },
-    async update(owner, change) {
-      validOwner(owner);
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query("SET LOCAL statement_timeout='5s'");
-        await client.query("INSERT INTO broker_workspaces(owner_id,payload) VALUES($1,$2) ON CONFLICT DO NOTHING", [owner, JSON.stringify(emptyBrokerWorkspace())]);
-        const state = (await client.query("SELECT payload FROM broker_workspaces WHERE owner_id=$1 FOR UPDATE", [owner])).rows[0].payload;
-        const result = change(state);
-        if (result?.then) throw new Error("Broker transactions cannot contain asynchronous work");
-        await client.query("UPDATE broker_workspaces SET payload=$2,updated_at=now() WHERE owner_id=$1", [owner, encode(state)]);
-        await client.query("COMMIT");
-        return copy(result);
-      } catch (error) { await client.query("ROLLBACK").catch(() => {}); throw error; }
-      finally { client.release(); }
-    },
-    async close() {},
-  };
+  return createNormalizedPostgresBrokerRepository(pool, { empty: emptyBrokerWorkspace, validOwner, encode });
 }

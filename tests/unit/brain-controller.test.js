@@ -28,6 +28,59 @@ function fixture(t, fetchImpl, options = {}) {
   return { dom, root, instance, find: (name) => root.querySelector(`[data-brain-${name}]`), field: (name) => root.querySelector("form").elements.namedItem(name) };
 }
 
+test("loading older missions appends beyond twenty and selecting one preserves the loaded history", async (t) => {
+  const recent = Array.from({ length: 20 }, (_, index) => run({ id: `recent-${index}`, status: "completed" }));
+  const older = run({ id: "older", status: "completed", input: { symbol: "OLDER", mode: "demo" } });
+  const app = fixture(t, async (url) => {
+    if (url === "/api/brain/state") return response({ ...state, runs: recent, runsNextCursor: "next-page" });
+    if (url.includes("?cursor=")) return response({ runs: [recent[19], older], nextCursor: null });
+    return response({ run: older });
+  });
+  await tick();
+  assert.equal(app.find("more-runs").hidden, false);
+  app.find("more-runs").click(); await tick();
+  assert.equal(app.find("history").querySelectorAll("[data-run-id]").length, 21);
+  app.find("history").querySelector('[data-run-id="older"]').click(); await tick();
+  assert.equal(app.find("history").querySelectorAll("[data-run-id]").length, 21);
+  assert.equal(app.find("more-runs").hidden, true);
+  assert.equal(app.find("status").textContent, "COMPLETED");
+});
+
+test("an old pagination response cannot replace a refreshed history or the selected mission", async (t) => {
+  let finishPage, stateReads = 0;
+  const current = run({ status: "completed" });
+  const app = fixture(t, async (url) => {
+    if (url === "/api/brain/state") return response({ ...state, runs: [current], runsNextCursor: ++stateReads === 1 ? "old-cursor" : "fresh-cursor" });
+    if (url.includes("?cursor=")) return new Promise((resolve) => { finishPage = resolve; });
+    return response({ run: current });
+  });
+  await tick(); app.find("more-runs").click(); await tick();
+  assert.equal(app.find("more-runs").disabled, true);
+  app.find("refresh").click(); await tick();
+  finishPage(response({ runs: [run({ id: "stale-run", status: "completed" })], nextCursor: null })); await tick();
+  assert.equal(app.find("history").querySelector('[data-run-id="stale-run"]'), null);
+  assert.equal(app.find("more-runs").hidden, false);
+  assert.equal(app.find("more-runs").disabled, false);
+  assert.equal(app.find("status").textContent, "COMPLETED");
+});
+
+test("source pagination exposes loading, recoverable failure and a complete loaded count", async (t) => {
+  let attempts = 0;
+  const source = (id) => ({ id, title: `Source ${id}`, kind: "knowledge", characters: 12 });
+  const app = fixture(t, async (url) => {
+    if (url === "/api/brain/state") return response({ ...state, documents: [source("one")], documentsNextCursor: "source-cursor" });
+    return ++attempts === 1 ? response({ message: "Please retry" }, 503) : response({ documents: [source("two")], nextCursor: null });
+  });
+  await tick(); assert.equal(app.find("document-count").textContent, "1+ SOURCES");
+  app.find("more-documents").click(); await tick();
+  assert.match(app.find("sources-feedback").textContent, /retry/);
+  assert.equal(app.find("more-documents").disabled, false);
+  app.find("more-documents").click(); await tick();
+  assert.equal(app.find("documents").querySelectorAll("[data-document-id]").length, 2);
+  assert.equal(app.find("document-count").textContent, "2 SOURCES");
+  assert.equal(app.find("more-documents").hidden, true);
+});
+
 test("a saved review note is restored only for its associated mission", async (t) => {
   const saved = { ...workspace, drafts: { research: { fields: { approvalRunId: "run-1", approvalNote: "Check the date before accepting" } } } };
   const app = fixture(t, async () => response({ ...state, runs: [run()] }), { workspaceFetch: async () => response(saved) });

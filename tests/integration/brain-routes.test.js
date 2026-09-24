@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
-import { createSqliteBrainRepository } from "../../src/agent-brain/brain-repository.js";
+import { createMemoryBrainRepository, createSqliteBrainRepository } from "../../src/agent-brain/brain-repository.js";
 import { CAPABILITIES, MAX_ROLE_SNAPSHOT_AGE_MS } from "../../src/models/access.js";
 
 const noKeys = {
@@ -40,13 +40,46 @@ async function startDemo(app, client, csrf, username = "operator") {
 test("brain page and every API require authentication and disable caching", async (t) => {
   const app = makeApp(t);
   await request(app).get("/brain").expect(302).expect("Location", "/login").expect("Cache-Control", "no-store");
-  for (const endpoint of ["/api/brain/state", "/api/brain/runs/id", "/api/brain/documents"]) {
+  for (const endpoint of ["/api/brain/state", "/api/brain/runs", "/api/brain/runs/id", "/api/brain/documents"]) {
     await request(app).get(endpoint).expect(401).expect("Cache-Control", "no-store");
   }
   for (const endpoint of ["/api/brain/runs", "/api/brain/runs/id/decision", "/api/brain/runs/id/cancel", "/api/brain/documents", "/api/brain/evals"]) {
     await request(app).post(endpoint).send(demo).expect(401).expect("Cache-Control", "no-store");
   }
   await request(app).delete("/api/brain/documents/id").expect(401).expect("Cache-Control", "no-store");
+});
+
+test("history and source pagination traverse timestamp ties with bounded owner-scoped cursors", async (t) => {
+  const app = makeApp(t, { brainRepository: createMemoryBrainRepository({ now: () => new Date("2026-09-24T12:00:00.000Z") }) });
+  const client = await loginTestOperator(app, { username: "pagination" });
+  const other = await loginTestOperator(app, { username: "pagination-other" });
+  for (let index = 0; index < 55; index++) {
+    const id = `item-${String(index).padStart(3, "0")}`;
+    await app.locals.brainRepository.saveRun("discord:pagination", { id, status: "completed", input: { symbol: "EXAMPLE" } });
+    await app.locals.brainRepository.putDocument("discord:pagination", { id, title: `Source ${index}`, text: "Dated fixture source", kind: "knowledge" });
+  }
+  const state = (await client.get("/api/brain/state").expect(200)).body;
+  assert.equal(state.runs.length, 20);
+  assert.equal(state.documents.length, 25);
+  assert.equal(typeof state.runsNextCursor, "string");
+  assert.equal(typeof state.documentsNextCursor, "string");
+  for (const kind of ["runs", "documents"]) {
+    let cursor, ids = [];
+    do {
+      const result = (await client.get(`/api/brain/${kind}`).query({ limit: 7, ...(cursor ? { cursor } : {}) }).expect(200).expect("Cache-Control", "no-store")).body;
+      assert.ok(result[kind].length <= 7);
+      ids.push(...result[kind].map((item) => item.id));
+      cursor = result.nextCursor;
+    } while (cursor);
+    assert.equal(ids.length, 55);
+    assert.equal(new Set(ids).size, 55);
+    const foreign = (await other.get(`/api/brain/${kind}`).query({ cursor: state[`${kind}NextCursor`] }).expect(200)).body;
+    assert.deepEqual(foreign[kind], []);
+    assert.equal(foreign.nextCursor, null);
+  }
+  for (const query of [{ limit: 0 }, { limit: 51 }, { limit: "2.5" }, { limit: [1, 2] }, { cursor: "not-json" }, { cursor: state.documentsNextCursor }]) {
+    await client.get("/api/brain/runs").query(query).expect(400);
+  }
 });
 
 test("base members receive full and fragment brain pages and sanitized provider state", async (t) => {

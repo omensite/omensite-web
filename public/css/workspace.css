@@ -77,6 +77,21 @@
 .research-trace { padding: 0; }
 .research-trace > summary { padding: 18px 22px; cursor: pointer; font: 500 14px var(--font-display); }
 .research-page .brain-provider-note { font-size: 10px; color: var(--ink-faint); }
+.research-page :is(.brain-library-body, .brain-library-workspace, .brain-document-inputs, .brain-documents) { min-width: 0; }
+.research-page .brain-document-inputs > .field { min-width: 0; }
+.research-page .brain-document-inputs :is(input, select) { width: 100%; min-width: 0; max-width: 100%; }
+.research-page .brain-document { flex-wrap: wrap; align-items: flex-start; }
+.research-page .brain-document > div { flex: 1 1 180px; min-width: 0; }
+.research-page .brain-document :is(strong, small) { overflow-wrap: anywhere; }
+.research-page .brain-document > button { flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
+
+/* Research no longer inherits the legacy query container. Use the viewport
+   breakpoint so the knowledge form and saved sources also stack on phones. */
+@media (max-width: 700px) {
+  .research-page .brain-library-workspace { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .research-page .brain-saved-sources { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .research-page .brain-document-inputs { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
 .accounts-page [data-rh-connect], .accounts-page [data-rh-disconnect], .accounts-page [data-rh-setup], .accounts-page .rh-flow, .accounts-page .rh-hero > div:first-child { display: none !important; }
 .accounts-page .rh-hero { padding: 0 0 12px; border: 0; min-height: 0; background: transparent; }
 .accounts-page .rh-controls { padding: 0; border: 0; margin-bottom: 16px; }

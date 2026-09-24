@@ -43,8 +43,8 @@ export function createBrainKnowledge({ repository }) {
     async removeDocument(ownerId, id) {
       await repository.deleteDocument(ownerId, id);
     },
-    async listDocuments(ownerId) {
-      return (await repository.listDocuments(ownerId)).map(summary);
+    async listDocuments(ownerId, options) {
+      return (await repository.listDocuments(ownerId, options)).map(summary);
     },
     async search(ownerId, query, { limit = 5, kind } = {}) {
       if (typeof query !== "string" || query.length > 4000 || (kind !== undefined && !["knowledge", "memory"].includes(kind))) {
@@ -54,7 +54,12 @@ export function createBrainKnowledge({ repository }) {
       }
       const terms = [...new Set(tokens(query))].slice(0, 64);
       if (!terms.length) return [];
-      const documents = (await repository.listDocuments(ownerId)).filter((document) => kind === undefined || document.kind === kind);
+      // PostgreSQL selects an indexed, tenant-scoped candidate set first. Its
+      // scores are candidate-local; local repositories retain full-corpus BM25.
+      // Both paths return only positive lexical matches and verbatim citations.
+      const documents = typeof repository.searchDocuments === "function"
+        ? await repository.searchDocuments(ownerId, terms, { kind, limit: 64 })
+        : (await repository.listDocuments(ownerId)).filter((document) => kind === undefined || document.kind === kind);
       const candidates = documents.flatMap(chunks).map((chunk) => {
         // Title terms have a modest boost; all excerpts remain verbatim source
         // text. This is lexical retrieval, with no embeddings or model calls.

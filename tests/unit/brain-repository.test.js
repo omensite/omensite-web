@@ -121,8 +121,28 @@ for (const [name, create] of [
     }
     assert.equal(await repository.getCache("owner", "cache-0"), null);
     assert.equal((await repository.getCache("owner", "cache-100")).value, 100);
+    await repository.putCache("owner", "already-expired", { value: 0, expiresAt: time.valueOf() - 1 });
+    assert.equal((await repository.getCache("owner", "cache-1")).value, 1, "an expired insertion must not evict a fresh cache entry");
     time = new Date(time.valueOf() + 60_000);
     assert.equal(await repository.getCache("owner", "cache-100"), null);
+  });
+
+  test(`${name}: keyset pages preserve timestamp ties and tenant boundaries`, async (t) => {
+    const repository = create({ now: () => new Date("2026-09-01T00:00:00Z") });
+    t.after(() => repository.close());
+    for (const id of ["c", "a", "b"]) {
+      await repository.saveRun("owner", run(id, "completed"));
+      await repository.putDocument("owner", document(id));
+    }
+    await repository.putDocument("other", document("secret"));
+    for (const method of ["listRuns", "listDocuments"]) {
+      const first = await repository[method]("owner", { limit: 2 });
+      assert.deepEqual(first.map((row) => row.id), ["a", "b"]);
+      const last = first.at(-1);
+      const second = await repository[method]("owner", { limit: 2, before: { id: last.id, updatedAt: last.updatedAt } });
+      assert.deepEqual(second.map((row) => row.id), ["c"]);
+      await assert.rejects(repository[method]("owner", { before: { id: "b" } }), { code: "BRAIN_INVALID_INPUT" });
+    }
   });
 }
 
@@ -198,8 +218,59 @@ test("postgres rolls back a failed transaction and releases its connection", asy
       return { rows: [] };
     }, release() { released = true; } };
   } });
-  await assert.rejects(repository.getRun("owner", "id"), /Database unavailable/);
+  await assert.rejects(repository.saveRun("owner", run("id")), /Database unavailable/);
   assert.equal(commands.at(-1), "ROLLBACK");
   assert.equal(released, true);
   await repository.close();
+});
+
+test("postgres reads are bounded and do not take owner write locks or transactions", async (t) => {
+  const queries = [];
+  let releases = 0;
+  const repository = createPostgresBrainRepository({ async connect() {
+    return { async query(sql, values) { queries.push({ sql, values }); return { rows: [] }; }, release() { releases += 1; } };
+  } }, { now: () => new Date("2026-09-01T00:00:00Z") });
+  t.after(() => repository.close());
+  await repository.getRun("owner", "id");
+  await repository.listRuns("owner", { limit: 7 });
+  await repository.listDocuments("owner", { limit: 3, before: { id: "last", updatedAt: "2026-09-01T00:00:00Z" } });
+  await repository.getCache("owner", "cache-key");
+  assert.equal(queries.length, 4);
+  assert.equal(releases, 4);
+  assert.ok(queries.every(({ sql }) => sql.startsWith("SELECT") && !sql.includes("pg_advisory")));
+  assert.match(queries[1].sql, /ORDER BY updated_at DESC, id ASC LIMIT \$2/);
+  assert.deepEqual(queries[1].values, ["owner", 7]);
+  assert.match(queries[2].sql, /updated_at < \$2.*id > \$3/);
+  assert.deepEqual(queries[2].values, ["owner", "2026-09-01T00:00:00.000Z", "last", 3]);
+  assert.match(queries[3].sql, /expires_at > \$3/);
+});
+
+test("postgres cache maintenance deletes expired/old IDs without reading cached payloads", async (t) => {
+  const queries = [];
+  const repository = createPostgresBrainRepository({ async connect() {
+    return { async query(sql, values) { queries.push({ sql, values }); return { rows: [] }; }, release() {} };
+  } });
+  t.after(() => repository.close());
+  await repository.putCache("owner", "key", { value: { answer: 42 }, expiresAt: Date.now() + 60_000 });
+  assert.ok(!queries.some(({ sql }) => sql.startsWith("SELECT id, payload")));
+  const deletion = queries.filter(({ sql }) => sql.startsWith("DELETE"));
+  assert.equal(deletion.length, 2);
+  assert.match(deletion[0].sql, /owner_id = \$1 AND expires_at <= \$2/);
+  assert.match(deletion[1].sql, /SELECT id .* ORDER BY updated_at DESC, id ASC OFFSET \$4/);
+  assert.deepEqual(deletion[1].values, ["owner", "owner", "key", 99]);
+});
+
+test("postgres candidate retrieval binds owner, terms, kind and candidate bound", async (t) => {
+  const queries = [];
+  const repository = createPostgresBrainRepository({ async connect() {
+    return { async query(sql, values) { queries.push({ sql, values }); return { rows: [] }; }, release() {} };
+  } });
+  t.after(() => repository.close());
+  assert.deepEqual(await repository.searchDocuments("owner", ["équité", "risk"], { kind: "memory", limit: 1000 }), []);
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /WHERE owner_id = \$1/);
+  assert.match(queries[0].sql, /@@ to_tsquery\('simple', \$2\)/);
+  assert.match(queries[0].sql, /payload->>'kind' = \$4/);
+  assert.deepEqual(queries[0].values, ["owner", "équité | risk", 64, "memory"]);
+  await assert.rejects(repository.searchDocuments("owner", ["risk' | secret"]), { code: "BRAIN_INVALID_INPUT" });
 });

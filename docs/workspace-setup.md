@@ -13,6 +13,9 @@ Saving credentials does not enable paid AI. `TRADER_PAID_AI_ENABLED` and the sep
 
 ## Persistence and deployment
 
+See [database operations](database-operations.md) for migrations 006–007, tracked
+upgrades, normalized broker storage, bounded history queries and rollback.
+
 - Production still requires `DATABASE_URL`. Run the existing controlled migration job (`npm run migrate` with `APP_ENVIRONMENT=production`, `APP_ALLOW_MIGRATIONS=true`, and the target database configuration) before starting the new version. Migration `005_user_workspaces.sql` adds owner-scoped provider credentials, preferences, and drafts. The migration runner and readiness check include the new table. Existing migrations remain idempotent; beta application startup does not automatically run them.
 - Without a configured database in development, sessions, users, revocations, journal entries, and workspace settings use `WORKSPACE_DB_PATH` (default `data/workspace.sqlite`). Brain research stays in `BRAIN_DB_PATH` (default `data/agent-brain.sqlite`); Robinhood state stays in `data/robinhood.sqlite`. Preserve the directory/volume across restarts and container replacement.
 - Set a stable, private `SESSION_SECRET`. Login cookies are HTTP-only, SameSite=Lax, secure in production, and roll forward for 30 days. Discord admission/role refresh, bans, revocation, and sign-out can end access sooner.

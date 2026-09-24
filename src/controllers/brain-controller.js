@@ -1,5 +1,6 @@
 import { runBrainEvaluations } from "../agent-brain/brain-evals.js";
 import { buildBrainReadiness, summarizeOfflineEvaluation } from "../agent-brain/brain-readiness.js";
+import { brainPage, readBrainPage } from "./brain-pagination.js";
 
 let evaluating = false;
 
@@ -72,8 +73,10 @@ export function createBrainController({ brainService, brainKnowledge, brainTools
       finally { evaluating = false; }
     }),
     state: handle(async (req, res, ownerId) => {
-      const state = await brainService.getState(ownerId);
-      const documents = await brainKnowledge.listDocuments(ownerId);
+      const state = await brainService.getState(ownerId, { runLimit: 21 });
+      const runsPage = brainPage(state.runs, "runs", 20);
+      const documentsPage = brainPage(await brainKnowledge.listDocuments(ownerId, { limit: 26 }), "documents", 25);
+      const { documents } = documentsPage;
       const broker = await robinhoodService?.state(ownerId);
       // Cortex needs operational switches, never credentials, account snapshots,
       // order arguments or the broker action log. Keep this projection explicit.
@@ -87,9 +90,14 @@ export function createBrainController({ brainService, brainKnowledge, brainTools
           persistent: broker.storage?.persistent === true,
         },
       } : null;
-      return res.json({ ...state, documents, toolDefinitions: brainTools?.definitions("strategist") ?? [],
+      return res.json({ ...state, runs: runsPage.runs, runsNextCursor: runsPage.nextCursor,
+        documents, documentsNextCursor: documentsPage.nextCursor, toolDefinitions: brainTools?.definitions("strategist") ?? [],
         robinhoodState,
         readiness: buildBrainReadiness({ state, documents, lastEvaluation, broker }) });
+    }),
+    runs: handle(async (req, res, ownerId) => {
+      const { limit, before } = readBrainPage(req.query, "runs", 20);
+      return res.json(brainPage(await brainService.listRuns(ownerId, { limit: limit + 1, before }), "runs", limit));
     }),
     getRun: handle(async (req, res, ownerId) => {
       const run = await brainService.getRun(ownerId, req.params.id);
@@ -109,7 +117,10 @@ export function createBrainController({ brainService, brainKnowledge, brainTools
       const run = await brainService.cancel(ownerId, req.params.id);
       return res.json({ run });
     }),
-    documents: handle(async (req, res, ownerId) => res.json({ documents: await brainKnowledge.listDocuments(ownerId) })),
+    documents: handle(async (req, res, ownerId) => {
+      const { limit, before } = readBrainPage(req.query, "documents", 25);
+      return res.json(brainPage(await brainKnowledge.listDocuments(ownerId, { limit: limit + 1, before }), "documents", limit));
+    }),
     addDocument: handle(async (req, res, ownerId) => {
       const { title, text, kind } = req.body ?? {};
       if (kind !== undefined && kind !== "knowledge") return fail(res, { code: "BRAIN_INPUT_INVALID" });

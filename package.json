@@ -10,6 +10,9 @@
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "db:status": "node --env-file-if-exists=.env scripts/migrate.js --status",
+    "db:health": "node --env-file-if-exists=.env scripts/database-health.js",
+    "db:benchmark": "node scripts/benchmark-database.js",
     "eval:brain": "node scripts/eval-brain.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
