@@ -24,18 +24,18 @@ test("protected clean routes render full documents and fragments", async () => {
   assert.doesNotMatch(response.text, /root@omensite:~\$|SESSION 01 \/ AUTHORIZED/);
 
   const cases = [
-    ["/home", "omensite://home"],
-    ["/trader", "omensite://trader"],
-    ["/indicators", "omensite://indicators"],
-    ["/market-news", "omensite://market-news"],
-    ["/alerts/ict", "omensite://alerts/ict"],
-    ["/alerts/support-resistance", "omensite://alerts/support-resistance"],
-    ["/journal", "omensite://journal"],
-    ["/journal/new", "omensite://journal/new"],
+    ["/home", "home"],
+    ["/brain", "brain"],
+    ["/research", "research"],
+    ["/accounts", "accounts"],
+    ["/settings", "settings"],
+    ["/market-news", "market-news"],
+    ["/journal", "journal"],
+    ["/journal/new", "journal-new"],
   ];
 
   for (const [path, identity] of cases) {
-    await agent.get(path).expect(200).expect(/data-app-shell/).expect(new RegExp(identity));
+    await agent.get(path).expect(200).expect(/data-app-shell/).expect("X-Omensite-Key", identity);
     await agent.get(path).set("X-Omensite-Fragment", "1").expect(200)
       .expect(/data-route-view/).expect((response) => {
         assert.doesNotMatch(response.text, /data-app-shell/);
@@ -49,7 +49,7 @@ test("home quick-access links opt into fragment navigation", async () => {
 
   const response = await agent.get("/home").expect(200);
   const dom = new JSDOM(response.text);
-  for (const path of ["/brain", "/brain?view=robinhood", "/trader", "/indicators", "/market-news", "/alerts/ict", "/alerts/support-resistance", "/journal"]) {
+  for (const path of ["/brain", "/research", "/settings", "/accounts", "/journal"]) {
     assert.ok(dom.window.document.querySelector(`[data-route-view] a[href="${path}"][data-nav-link]`), `${path} uses fragment navigation`);
   }
   dom.window.close();
@@ -67,7 +67,7 @@ test("server-rendered Cortex shell exposes semantic navigation, page heading, an
   assert.equal(activeLink.getAttribute("aria-current"), "page");
   assert.match(activeLink.textContent, /Overview/);
   assert.ok(navigation.querySelector('[href="/brain"][data-nav-link]'));
-  assert.equal(document.querySelector(".route-title").tagName, "H1");
+  assert.equal(document.querySelector(".workspace-welcome h1").tagName, "H1");
   assert.equal(document.querySelectorAll("[data-route-view] h1").length, 1);
   const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
   const styleIndex = (name) => stylesheets.findIndex((href) => href.endsWith(`/css/${name}.css`));

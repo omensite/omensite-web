@@ -14,7 +14,6 @@ const MODULES = [
 ];
 const TOOL_ROLES = { "context.read": "researcher", "knowledge.search": "researcher", "memory.search": "researcher", "journal.search": "researcher", "calendar.read": "researcher", "risk.check": "strategist" };
 const TOOL_POSITIONS = [[-.22, -.73, .18], [.25, -.75, -.12], [.85, -.04, -.16], [.29, .73, -.14], [-.26, .74, .12], [-.88, -.04, .03]];
-const FILTERS = [["all", "All"], ["agent", "Agents"], ["tool", "Tools"], ["memory", "Memory"]];
 const active = (value) => ["running", "active", "in_progress"].includes(value);
 const safeArray = (value) => Array.isArray(value) ? value : [];
 const label = (value) => String(value ?? "").replaceAll("_", " ");
@@ -65,251 +64,203 @@ export function buildBrainNetworkData(state = {}) {
   return { nodes, run, runs, providers, brokerState: state.brokerState, counts: { agents: ROLES.length, tools: tools.length, documents: documents.length, memories: documents.filter((document) => document.kind === "memory").length, runs: runs.length }, paidCallsEnabled: state.paidCallsEnabled === true };
 }
 
+// Retain the view across in-app route changes, never across a document refresh.
+const documentViews = new WeakMap();
+const defaultView = () => ({ zoom: 1, yaw: -.28, pitch: .14, panX: 0, panY: 0 });
+
 export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
   if (!host?.ownerDocument) return { update() {}, refresh() {}, dispose() {} };
   const document = host.ownerDocument, window = document.defaultView;
+  const view = documentViews.get(document) ?? defaultView(); documentViews.set(document, view);
   const el = (tag, text, className) => { const item = document.createElement(tag); if (text !== undefined) item.textContent = text; if (className) item.className = className; return item; };
-  const button = (text, className, ariaLabel) => { const item = el("button", text, className); item.type = "button"; if (ariaLabel) item.setAttribute("aria-label", ariaLabel); return item; };
-  let data = buildBrainNetworkData(), selectedId = "omen", filter = "all", zoom = 1, yaw = -.6, pitch = .22;
-  let exploded = 0, explosionFrom = 0, explosionTarget = 0, explosionStart = 0, assemblyStart = null;
-  let disposed = false, frame = null, lastPaint = null, lastFrameTime = null, sceneTime = 0, width = 680, height = 540, drag = null, hasCanvas = false, intersecting = true;
-  const motionQuery = window?.matchMedia?.("(prefers-reduced-motion: reduce)");
+  const button = (text, className, ariaLabel) => { const item = el('button', text, className); item.type = 'button'; if (ariaLabel) item.setAttribute('aria-label', ariaLabel); return item; };
+  let data = buildBrainNetworkData(), selectedId = null, disposed = false, frame = null, lastPaint = null, lastFrameTime = null, sceneTime = 0;
+  let width = 1000, height = 700, drag = null, intersecting = true, moveMode = false;
+  const motionQuery = window?.matchMedia?.('(prefers-reduced-motion: reduce)');
   let paused = Boolean(motionQuery?.matches);
-  const listeners = [], nodeButtons = new Map(), lobeButtons = new Map();
+  const listeners = [], lobeButtons = new Map();
   const listen = (target, event, handler, options) => { target?.addEventListener?.(event, handler, options); listeners.push(() => target?.removeEventListener?.(event, handler, options)); };
-  const shell = el("section", undefined, "brain-network-shell"); shell.setAttribute("aria-label", "Agent network explorer");
-  const toolbar = el("div", undefined, "brain-network-toolbar");
-  const filters = el("div", undefined, "brain-network-filters"); filters.setAttribute("role", "group"); filters.setAttribute("aria-label", "Filter network nodes");
-  for (const [id, name] of FILTERS) { const item = button(name); item.dataset.networkFilter = id; item.setAttribute("aria-pressed", String(id === filter)); filters.append(item); }
-  const lock = el("span", "PAID CALLS LOCKED", "brain-network-lock");
-  const networkTitle = el("div", undefined, "brain-network-title"); networkTitle.append(el("span", "01 / CORTEX", "brain-network-eyebrow"), el("h2", "NEURAL MATRIX"));
-  toolbar.append(networkTitle, lock);
-  const workspace = el("div", undefined, "brain-network-workspace");
-  const roster = el("aside", undefined, "brain-network-roster"); roster.setAttribute("aria-label", "Agents and support modules");
-  const rosterHeading = el("div", undefined, "brain-network-section-heading"); rosterHeading.append(el("h3", "AGENT ROSTER"), el("span", "04 ROLES"));
-  const nodeList = el("div", undefined, "brain-network-node-list");
-  roster.append(rosterHeading, filters, nodeList);
-  const stage = el("div", undefined, "brain-network-stage"); stage.setAttribute("aria-label", "Interactive agent topology");
-  const canvas = el("canvas", undefined, "brain-network-canvas"); canvas.setAttribute("aria-hidden", "true");
+  const shell = el('section', undefined, 'brain-network-shell'); shell.setAttribute('aria-label', 'Interactive neural network');
+  const stage = el('div', undefined, 'brain-network-stage'); stage.tabIndex = 0;
+  stage.setAttribute('aria-label', 'Neural network. Drag or use arrow keys to rotate. Shift-drag or Shift-arrow keys to move. Select a labeled region to explore.');
+  const canvas = el('canvas', undefined, 'brain-network-canvas'); canvas.setAttribute('aria-hidden', 'true');
   let context = null;
-  // jsdom deliberately has no canvas implementation. Accessible node controls remain usable.
-  if (typeof window?.CanvasRenderingContext2D === "function") { try { context = canvas.getContext("2d", { alpha: true }); } catch { /* DOM controls are the fallback. */ } }
-  hasCanvas = Boolean(context);
-  function palette() { const theme = window?.getComputedStyle?.(host); return { red: theme?.getPropertyValue("--red").trim(), glow: theme?.getPropertyValue("--red-glow").trim(), line: theme?.getPropertyValue("--line-strong").trim(), mono: theme?.getPropertyValue("--font-mono").trim(), dark: document.documentElement.dataset.theme !== "daylight" }; }
+  if (typeof window?.CanvasRenderingContext2D === 'function') { try { context = canvas.getContext('2d', { alpha: true }); } catch { /* Labels remain available without canvas. */ } }
+  const palette = () => { const theme = window?.getComputedStyle?.(host); return { red: theme?.getPropertyValue('--red').trim(), glow: theme?.getPropertyValue('--red-glow').trim(), line: theme?.getPropertyValue('--line-strong').trim(), mono: theme?.getPropertyValue('--font-mono').trim(), dark: document.documentElement.dataset.theme !== 'daylight' }; };
   let canvasColors = palette();
   const renderCanvas = context ? createBrainNetworkRenderer(context, canvasColors) : null;
-  const grid = el("div", undefined, "brain-network-grid"); grid.setAttribute("aria-hidden", "true");
-  const halo = el("div", undefined, "brain-network-halo"); halo.setAttribute("aria-hidden", "true");
-  const labels = el("div", undefined, "brain-network-labels");
-  const coordinate = el("span", "NEURAL MATRIX / ASSEMBLED", "brain-network-coordinate");
-  const mode = el("span", "IDLE / OFFLINE READY", "brain-network-mode");
-  const controls = el("div", undefined, "brain-network-controls"); controls.setAttribute("role", "group"); controls.setAttribute("aria-label", "Network view controls");
-  const zoomOut = button("−", undefined, "Zoom out"), zoomIn = button("+", undefined, "Zoom in"), reset = button("↺", undefined, "Reset network view"), motion = button(paused ? "▷" : "Ⅱ", undefined, "Pause network motion");
-  const disassemble = button("DISASSEMBLE", "brain-network-disassemble"), reassemble = button("REFORM", "brain-network-reassemble", "Reassemble brain particles"); disassemble.setAttribute("aria-pressed", "false");
-  const zoomLabel = el("output", "100%", "brain-network-zoom"); zoomLabel.setAttribute("aria-label", "Network zoom");
-  controls.append(disassemble, reassemble, zoomOut, zoomLabel, zoomIn, reset, motion);
-  const hint = el("span", "DRAG TO ROTATE · SELECT A LOBE", "brain-network-hint");
-  const decorationNote = el("span", "DECORATIVE NEURAL MOTION · ZERO AI TOKENS", "brain-network-decoration-note");
-  stage.append(grid, halo, canvas, labels, coordinate, mode, controls, hint, decorationNote);
-  stage.tabIndex = 0; stage.setAttribute("aria-label", "Binary brain. Arrow keys rotate; E disassembles; plus and minus zoom.");
-  const rail = el("aside", undefined, "brain-network-rail");
-  const inspector = el("div", undefined, "brain-network-inspector"); inspector.setAttribute("aria-live", "polite");
-  const activity = el("div", undefined, "brain-network-activity");
-  rail.append(inspector, activity); workspace.append(roster, stage, rail);
-  const footer = el("div", undefined, "brain-network-footer");
-  const telemetry = el("section", undefined, "brain-network-telemetry"); telemetry.setAttribute("aria-label", "Recorded mission metrics");
-  const history = el("section", undefined, "brain-network-recent"); history.setAttribute("aria-label", "Recent mission history");
-  shell.append(toolbar, workspace, footer, telemetry, history); host.replaceChildren(shell);
+  const grid = el('div', undefined, 'brain-network-grid'); grid.setAttribute('aria-hidden', 'true');
+  const labels = el('div', undefined, 'brain-network-labels'); labels.setAttribute('role', 'group'); labels.setAttribute('aria-label', 'Explore network regions');
+  const coordinate = el('span', 'OMEN / NEURAL NETWORK', 'brain-network-coordinate');
+  const mode = el('span', 'IDLE', 'brain-network-mode');
+  const controls = el('div', undefined, 'brain-network-controls'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Network view controls');
+  const rotate = button('Rotate', undefined, 'Rotate network'), move = button('Move', undefined, 'Move network');
+  const zoomOut = button('−', undefined, 'Zoom out'), zoomIn = button('+', undefined, 'Zoom in');
+  const reset = button('↺', undefined, 'Reset network view'), motion = button(paused ? '▷' : 'Ⅱ', undefined, 'Pause network motion');
+  const zoomLabel = el('output', `${Math.round(view.zoom * 100)}%`, 'brain-network-zoom'); zoomLabel.setAttribute('aria-label', 'Network zoom');
+  rotate.setAttribute('aria-pressed', 'true'); move.setAttribute('aria-pressed', 'false');
+  controls.append(rotate, move, zoomOut, zoomLabel, zoomIn, reset, motion);
+  const hint = el('span', 'Drag to rotate · Shift-drag to move · Select a region', 'brain-network-hint');
+  const decorationNote = el('span', 'Decorative activity · zero AI tokens', 'brain-network-decoration-note');
+  const inspector = el('aside', undefined, 'brain-network-inspector'); inspector.hidden = true; inspector.setAttribute('aria-label', 'Selected network region');
+  stage.append(grid, canvas, labels, coordinate, mode, controls, hint, decorationNote); shell.append(stage, inspector); host.replaceChildren(shell);
 
-  function visible(node) { return node.kind === "core" || filter === "all" || node.kind === filter; }
-  function project(position) {
-    const [x, y, z] = position, rx = x * Math.cos(yaw) - z * Math.sin(yaw), rz = x * Math.sin(yaw) + z * Math.cos(yaw);
-    const ry = y * Math.cos(pitch) - rz * Math.sin(pitch), depth = y * Math.sin(pitch) + rz * Math.cos(pitch);
-    const perspective = 1 / (1.2 - depth * .13);
-    const scale = Math.min(width * .51, height * .64) * zoom;
-    return { x: width / 2 + rx * scale * perspective, y: height * .48 + ry * scale * perspective, depth };
+  function closeInspector({ restoreFocus = false } = {}) {
+    const previous = selectedId; selectedId = null; inspector.hidden = true; inspector.replaceChildren();
+    for (const item of lobeButtons.values()) item.setAttribute('aria-pressed', 'false');
+    if (restoreFocus) lobeButtons.get(previous)?.focus({ preventScroll: true });
+    draw();
   }
   function renderInspector() {
-    const focusedNavigation = inspector.contains(document.activeElement) ? document.activeElement.dataset.networkNavigate : null;
-    const node = data.nodes.find((item) => item.id === selectedId) ?? data.nodes[0]; selectedId = node.id;
-    const category = node.kind === "core" ? "SYSTEM CORE" : node.kind === "agent" ? "AGENT ROLE" : node.kind === "module" ? "SUPPORT MODULE" : node.kind === "tool" ? "REGISTERED TOOL" : node.subtype ?? "SAVED MISSION";
-    const status = el("span", label(node.status).toUpperCase(), "brain-network-state"); status.dataset.active = String(active(node.status));
-    const badge = el("div", undefined, "brain-network-inspector-meta"); badge.append(el("span", category), status);
-    inspector.replaceChildren(badge, el("span", node.kind === "agent" ? `0${ROLES.findIndex((role) => role.id === node.role) + 1}` : "[ + ]", "brain-network-inspector-symbol"), el("h3", node.name), el("p", node.kind === "core" ? "Four agents. One reviewable workflow. Research, challenge and verify a thesis before you decide what happens next." : node.detail));
-    if (node.kind === "core") {
-      const stats = el("dl", undefined, "brain-network-stats");
-      for (const [name, value] of [["Agent roles", data.counts.agents], ["Available tools", data.counts.tools], ["Saved sources", data.counts.documents], ["Saved missions", data.counts.runs]]) { const row = el("div"); row.append(el("dt", name), el("dd", number(value))); stats.append(row); }
-      inspector.append(stats);
-      inspector.append(el("p", data.paidCallsEnabled ? "Provider access enabled on server." : "Paid provider calls are locked. Exploring this network uses no AI tokens.", "brain-network-inspector-note"));
-    }
-    if (node.provider) inspector.append(el("p", node.provider, "brain-network-inspector-note"));
-    if (node.kind === "agent") {
+    const node = data.nodes.find((item) => item.id === selectedId);
+    if (!node) { closeInspector(); return; }
+    const focusedAction = inspector.contains(document.activeElement) ? document.activeElement.dataset.networkNavigate || document.activeElement.dataset.networkClose : null;
+    inspector.hidden = false;
+    const close = button('×', 'brain-network-inspector-close', 'Close region details'); close.dataset.networkClose = 'close';
+    const badge = el('div', node.kind === 'agent' ? 'AGENT ROLE' : 'SUPPORT MODULE', 'brain-network-inspector-meta');
+    const status = el('span', label(node.status), 'brain-network-state'); status.dataset.active = String(active(node.status));
+    inspector.replaceChildren(close, badge, el('h2', node.name), status, el('p', node.detail));
+    if (node.provider) inspector.append(el('p', node.provider, 'brain-network-inspector-note'));
+    if (node.kind === 'agent') {
       const events = safeArray(data.run?.trace).filter((event) => event.agent === node.role);
-      const details = el("dl", undefined, "brain-network-stats");
-      for (const [name, value] of [["Recorded events", events.length], ["Recorded tool events", events.filter((event) => event.details?.tool).length]]) { const row = el("div"); row.append(el("dt", name), el("dd", number(value))); details.append(row); }
-      inspector.append(details, el("p", events.at(-1)?.summary || "No recorded activity for this role in the selected mission.", "brain-network-inspector-note"));
+      if (events.length) inspector.append(el('p', events.at(-1).summary || 'Saved mission activity is available in Research.', 'brain-network-inspector-note'));
     }
-    if (node.kind === "module" && node.id === "module:robinhood") inspector.append(el("p", !data.brokerState ? "Open Robinhood to check connection and submission controls." : data.brokerState.liveEnabled === true ? data.brokerState.paused ? "Broker submissions paused. Every action requires separate review." : "Submissions enabled on the server. Every action requires separate review." : "Live submissions disabled. Open Robinhood for connection and approval details.", "brain-network-inspector-note"));
-    if (node.kind === "tool") inspector.append(el("p", `${node.observations} matching trace events in the selected mission.`, "brain-network-inspector-note"));
-    const actionLabel = node.panel === "robinhood" ? "OPEN ROBINHOOD ↗" : node.panel === "knowledge" ? "OPEN MEMORY ↗" : node.panel === "checks" ? "OPEN CHECKS ↗" : "VIEW MISSION ↗";
-    const navigate = button(actionLabel, "brain-network-open"); navigate.dataset.networkNavigate = node.panel ?? "mission"; inspector.append(navigate);
-    if (node.kind === "core") { const checks = button("SETUP CHECKS ↗", "brain-network-open brain-network-open-secondary"); checks.dataset.networkNavigate = "checks"; inspector.append(checks); }
-    for (const [id, item] of nodeButtons) item.setAttribute("aria-pressed", String(id === selectedId));
-    for (const [id, item] of lobeButtons) item.setAttribute("aria-pressed", String(id === selectedId));
-    if (focusedNavigation) [...inspector.querySelectorAll("[data-network-navigate]")].find((item) => item.dataset.networkNavigate === focusedNavigation)?.focus({ preventScroll: true });
-  }
-  function renderActivity() {
-    const run = data.run, header = el("div", undefined, "brain-network-activity-heading"); header.append(el("h4", "ACTIVITY LOG"), el("span", run ? "SAVED TRACE" : "NO MISSION"));
-    const list = el("ol");
-    const events = safeArray(run?.trace).slice(-4).reverse();
-    for (const event of events) {
-      const item = el("li"), when = new Date(event.at), at = Number.isNaN(when.getTime()) ? "—" : when.toLocaleTimeString([], { hour12: false });
-      const row = el("div", undefined, "brain-network-event-meta"); row.append(el("time", at), el("span", label(event.agent || event.type)));
-      item.append(row, el("p", event.summary ?? "Saved event")); list.append(item);
-    }
-    activity.replaceChildren(header);
-    if (run) {
-      const mission = el("div", undefined, "brain-network-current-mission"); mission.append(el("strong", `${run.input?.symbol ?? "RESEARCH"} / ${run.input?.mode === "demo" ? "OFFLINE DEMO" : "ANALYSIS"}`), el("span", label(run.status).toUpperCase())); activity.append(mission);
-    }
-    if (events.length) activity.append(list);
-    else activity.append(el("p", run ? "No trace events have been recorded for this mission." : "No mission activity yet. Run an offline demo to see the workflow here.", "brain-network-empty"));
-  }
-  function renderTelemetry() {
-    const metrics = data.run?.metrics, recorded = (value) => metrics ? number(value ?? 0) : "—";
-    const cost = !metrics || metrics.estimatedCostUsd === null ? "—" : `$${Number(metrics.estimatedCostUsd ?? 0).toFixed(4)}`;
-    telemetry.replaceChildren();
-    for (const [name, value, note] of [
-      ["MODEL CALLS", recorded(metrics?.modelCalls), metrics ? `${number(metrics.toolCalls ?? 0)} recorded tool calls` : "No selected mission"],
-      ["TOKENS USED", recorded((metrics?.inputTokens ?? 0) + (metrics?.outputTokens ?? 0)), metrics?.usageUnknownCalls ? `${number(metrics.usageUnknownCalls)} calls with unknown usage` : metrics ? `${number(metrics.cachedInputTokens ?? 0)} cached input tokens` : "Usage appears after a run"],
-      ["ESTIMATED COST", cost, metrics?.estimatedCostUsd === null ? "Provider pricing unavailable" : data.run?.input?.mode === "demo" ? "Offline demo · no provider calls" : "Recorded provider usage"],
-      ["ELAPSED", metrics ? `${((metrics.elapsedMs ?? 0) / 1000).toFixed(1)}s` : "—", metrics ? `${number(metrics.compactions ?? 0)} context compactions` : "No mission history yet"],
-    ]) { const card = el("div", undefined, "brain-network-telemetry-card"); card.append(el("span", name), el("strong", value), el("small", note)); telemetry.append(card); }
-    const head = el("div", undefined, "brain-network-section-heading"), open = button("VIEW WORKFLOW ↗", "brain-network-history-open"); open.dataset.networkNavigate = "mission";
-    head.append(el("h3", "MISSION HISTORY"), open); history.replaceChildren(head);
-    if (!data.runs.length) { history.append(el("p", "No recorded missions. Start with an offline demo to see the plan, tool observations and review checkpoint.", "brain-network-empty")); return; }
-    const rows = el("div", undefined, "brain-network-history-rows");
-    for (const run of data.runs.slice(0, 4)) {
-      const row = el("div", undefined, "brain-network-history-row"), title = el("div");
-      title.append(el("strong", run.input?.symbol || "RESEARCH"), el("span", run.input?.objective || "Saved research mission"));
-      row.append(title, el("span", run.input?.mode === "demo" ? "OFFLINE DEMO" : "ANALYSIS"), el("span", label(run.status).toUpperCase())); rows.append(row);
-    }
-    history.append(rows);
+    if (node.id === 'module:robinhood') inspector.append(el('p', !data.brokerState ? 'Open Accounts to check your connection and review queue.' : data.brokerState.connected ? 'Your account connection is saved. Every trading action requires its own review.' : 'Add your Robinhood connection in Settings.', 'brain-network-inspector-note'));
+    const actionLabel = node.panel === 'robinhood' ? 'Open Accounts ↗' : node.panel === 'knowledge' ? 'Open Knowledge ↗' : node.panel === 'checks' ? 'Open Settings ↗' : 'Open Research ↗';
+    const navigate = button(actionLabel, 'brain-network-open'); navigate.dataset.networkNavigate = node.panel ?? 'mission'; inspector.append(navigate);
+    for (const [id, item] of lobeButtons) item.setAttribute('aria-pressed', String(id === selectedId));
+    if (focusedAction) (focusedAction === 'close' ? close : navigate).focus({ preventScroll: true });
   }
   function renderNodes() {
-    const focusedId = nodeList.contains(document.activeElement) ? document.activeElement.dataset.networkNode : null;
-    const remaining = new Set(data.nodes.map((node) => node.id));
-    for (const [id, item] of nodeButtons) if (!remaining.has(id)) { item.remove(); nodeButtons.delete(id); }
-    for (const [index, node] of data.nodes.entries()) {
-      const item = nodeButtons.get(node.id) ?? button(undefined, `brain-network-node brain-network-node-${node.kind}`); item.dataset.networkNode = node.id;
-      item.style.setProperty("--node-index", index);
-      item.hidden = !visible(node); item.setAttribute("aria-label", `${node.name}, ${node.kind === "memory" ? node.subtype : node.kind}`); item.setAttribute("aria-pressed", String(node.id === selectedId)); item.title = node.name;
-      const dot = el("span", node.kind === "agent" ? `0${ROLES.findIndex((role) => role.id === node.role) + 1}` : node.kind === "module" ? "◇" : "·", "brain-network-node-dot"); dot.setAttribute("aria-hidden", "true");
-      const text = el("span", undefined, "brain-network-node-copy"); text.append(el("span", node.name, "brain-network-node-name"), el("small", node.kind === "core" ? "ORCHESTRATION" : node.kind === "agent" ? label(node.status).toUpperCase() : node.kind === "module" ? "SUPPORT MODULE" : label(node.kind).toUpperCase()));
-      item.replaceChildren(dot, text, el("span", "↗", "brain-network-node-arrow"));
-      item.dataset.active = String(active(node.status)); nodeButtons.set(node.id, item);
-      if (nodeList.children[index] !== item) nodeList.insertBefore(item, nodeList.children[index] ?? null);
-      if (node.region) {
-        const lobe = lobeButtons.get(node.id) ?? button(undefined, "brain-network-lobe"); lobe.dataset.lobeNode = node.id;
-        lobe.setAttribute("aria-label", `Inspect ${node.name} ${node.kind === "agent" ? "agent" : "support module"}`); lobe.setAttribute("aria-pressed", String(node.id === selectedId));
-        lobe.replaceChildren(el("strong", node.name), el("small", node.kind === "agent" ? label(node.status).toUpperCase() : "SUPPORT MODULE"));
-        lobeButtons.set(node.id, lobe); if (!labels.contains(lobe)) labels.append(lobe);
-      }
+    for (const node of data.nodes.filter((item) => item.region)) {
+      const item = lobeButtons.get(node.id) ?? button(undefined, 'brain-network-lobe');
+      item.dataset.lobeNode = node.id; item.dataset.networkNode = node.id;
+      item.setAttribute('aria-label', `Inspect ${node.name} ${node.kind === 'agent' ? 'agent' : 'support module'}`);
+      item.setAttribute('aria-pressed', String(node.id === selectedId)); item.dataset.active = String(active(node.status));
+      if (!item.firstChild) item.append(el('span', '', 'brain-network-lobe-dot'), el('strong', node.name));
+      lobeButtons.set(node.id, item); if (!labels.contains(item)) labels.append(item);
     }
-    // Moving an existing source to a new position can blur it in some browsers.
-    const focused = nodeButtons.get(focusedId);
-    if (focused && !focused.hidden && document.activeElement !== focused) focused.focus({ preventScroll: true });
   }
   function draw() {
     if (disposed) return;
-    const progress = Math.min(1, Math.max(0, (sceneTime - explosionStart) / 850)); exploded = explosionFrom + (explosionTarget - explosionFrom) * (1 - (1 - progress) ** 3);
-    const selected = data.nodes.find((node) => node.id === selectedId), parent = data.nodes.find((node) => node.id === selected?.parent);
-    const anchors = renderCanvas?.({ width, height, zoom, time: sceneTime, yaw, pitch, exploded, assembly: assemblyStart === null ? 1.6 : (sceneTime - assemblyStart) / 1000 * .75, selectedRegion: selected?.region ?? parent?.region });
-    const sides = { left: [], right: [] };
-    for (const [id, item] of lobeButtons) {
-      const node = data.nodes.find((node) => node.id === id), point = anchors?.get(node.region) ?? project(node.position);
-      const side = anchors ? point.x < width / 2 ? "left" : "right" : [...lobeButtons.keys()].indexOf(id) % 2 ? "right" : "left";
-      sides[side].push({ item, point, node });
+    const selected = data.nodes.find((node) => node.id === selectedId);
+    const anchors = renderCanvas?.({ width, height, ...view, time: sceneTime, selectedRegion: selected?.region });
+    const regions = [];
+    for (const [index, [id, item]] of [...lobeButtons].entries()) {
+      const node = data.nodes.find((entry) => entry.id === id);
+      const fallbackAngle = index * Math.PI / 4;
+      const point = anchors?.get(node.region) ?? { x: width * (.5 + Math.cos(fallbackAngle) * .25), y: height * (.47 + Math.sin(fallbackAngle) * .27) };
+      regions.push({ item, point, node });
     }
-    const labelWidth = Math.min(122, width * .245), labelHeight = 35;
+    // Keep four labels on each side even when panning every cluster off-center.
+    regions.sort((a, b) => a.point.x - b.point.x);
+    const sides = { left: regions.slice(0, 4), right: regions.slice(4) };
+    const labelWidth = Math.min(126, width * .30), labelHeight = 40;
     for (const [side, entries] of Object.entries(sides)) {
       entries.sort((a, b) => a.point.y - b.point.y);
-      const minY = 67, maxY = Math.max(minY, height - 110 - labelHeight);
-      const gap = Math.min(48, (maxY - minY) / Math.max(1, entries.length - 1)), span = gap * (entries.length - 1);
-      const start = Math.max(minY, Math.min(maxY - span, height * .43 - span / 2));
+      const minY = 85, maxY = Math.max(minY, height - 130 - labelHeight);
+      const gap = Math.min(54, (maxY - minY) / Math.max(1, entries.length - 1)), span = gap * (entries.length - 1);
+      const start = Math.max(minY, Math.min(maxY - span, height * .46 - span / 2));
       entries.forEach(({ item, point, node }, index) => {
-        const y = start + index * gap, x = side === "left" ? 12 : width - labelWidth - 12;
+        const y = start + index * gap, x = side === 'left' ? Math.max(14, width * .065 - labelWidth / 3) : Math.min(width - labelWidth - 14, width * .935 - labelWidth * .67);
         item.style.left = `${x}px`; item.style.top = `${y}px`; item.style.width = `${labelWidth}px`;
-        if (context) { context.beginPath(); context.moveTo(point.x, point.y); const endpoint = side === "left" ? x + labelWidth : x; context.lineTo(endpoint + (side === "left" ? 12 : -12), y + labelHeight / 2); context.lineTo(endpoint, y + labelHeight / 2); context.strokeStyle = node.id === selectedId ? canvasColors.red || "#ff2e43" : canvasColors.line || "#493039"; context.lineWidth = node.id === selectedId ? 1.4 : .7; context.stroke(); context.fillStyle = canvasColors.red || "#ff2e43"; context.fillRect(point.x - 1.5, point.y - 1.5, 3, 3); }
+        if (context) {
+          const endpoint = side === 'left' ? x + labelWidth : x;
+          context.beginPath(); context.moveTo(point.x, point.y); context.lineTo(endpoint, y + labelHeight / 2);
+          context.strokeStyle = node.id === selectedId ? canvasColors.red || '#ff2e43' : canvasColors.line || '#493039';
+          context.globalAlpha = node.id === selectedId ? .7 : .27; context.lineWidth = .7; context.stroke(); context.globalAlpha = 1;
+          context.fillStyle = canvasColors.red || '#ff2e43'; context.fillRect(point.x - 1.5, point.y - 1.5, 3, 3);
+        }
       });
     }
-    coordinate.textContent = `NEURAL MATRIX / ${explosionTarget ? "DISASSEMBLED" : "ASSEMBLED"}`;
   }
-  function visibleStage() { return !document.hidden && intersecting && !stage.closest("[hidden]") && width > 0; }
+  function visibleStage() { return !document.hidden && intersecting && !stage.closest('[hidden]') && width > 0; }
   function animate(time) {
-    frame = null; if (disposed || paused || !hasCanvas || !visibleStage()) { stopAnimation(); return; }
-    // An accumulated scene clock freezes exactly where it was paused. Refreshes and
-    // background-tab time cannot reset the scene or create a jump on resume.
+    frame = null;
+    if (disposed || paused || !context || !visibleStage()) { stopAnimation(); return; }
     if (lastPaint === null || time - lastPaint >= 1000 / 30) {
-      // Only the binary activity advances on its own. Orientation belongs to the
-      // operator, so the brain and its lobe labels stay still between gestures.
       if (lastFrameTime !== null) sceneTime += Math.min(100, Math.max(0, time - lastFrameTime));
       lastFrameTime = time; draw(); lastPaint = time;
     }
     frame = window.requestAnimationFrame(animate);
   }
   function startAnimation() {
-    const running = !disposed && !paused && visibleStage(); shell.dataset.motion = running ? "running" : "paused";
-    if (frame === null && running && hasCanvas && window?.requestAnimationFrame) frame = window.requestAnimationFrame(animate);
+    const running = !disposed && !paused && visibleStage(); shell.dataset.motion = running ? 'running' : 'paused';
+    if (frame === null && running && context && window?.requestAnimationFrame) frame = window.requestAnimationFrame(animate);
   }
-  function stopAnimation() {
-    if (frame !== null) window?.cancelAnimationFrame?.(frame);
-    frame = null; lastFrameTime = null; lastPaint = null; shell.dataset.motion = "paused";
-  }
+  function stopAnimation() { if (frame !== null) window?.cancelAnimationFrame?.(frame); frame = null; lastFrameTime = null; lastPaint = null; shell.dataset.motion = 'paused'; }
   function refresh() {
     if (disposed) return;
-    const rect = stage.getBoundingClientRect(); width = rect.width || stage.clientWidth || 680; height = rect.height || stage.clientHeight || 540;
+    const rect = stage.getBoundingClientRect(); width = rect.width || stage.clientWidth || 1000; height = rect.height || stage.clientHeight || 700;
     const ratio = Math.min(window?.devicePixelRatio || 1, 2); canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); context?.setTransform(ratio, 0, 0, ratio, 0, 0);
     draw(); startAnimation();
   }
-  function setMotion(value) { paused = value; motion.textContent = paused ? "▷" : "Ⅱ"; motion.setAttribute("aria-label", paused ? "Resume network motion" : "Pause network motion"); motion.setAttribute("aria-pressed", String(paused)); paused ? stopAnimation() : startAnimation(); draw(); }
-  function setZoom(value) { zoom = Math.min(1.45, Math.max(.65, value)); zoomLabel.textContent = `${Math.round(zoom * 100)}%`; zoomIn.disabled = zoom >= 1.45; zoomOut.disabled = zoom <= .65; draw(); }
-  listen(filters, "click", (event) => { const item = event.target.closest("[data-network-filter]"); if (!item) return; filter = item.dataset.networkFilter; for (const entry of filters.children) entry.setAttribute("aria-pressed", String(entry === item)); for (const node of data.nodes) nodeButtons.get(node.id).hidden = !visible(node); if (!visible(data.nodes.find((node) => node.id === selectedId))) selectedId = "omen"; renderInspector(); draw(); });
-  listen(nodeList, "click", (event) => { const item = event.target.closest("[data-network-node]"); if (!item) return; selectedId = item.dataset.networkNode; renderInspector(); draw(); });
-  listen(labels, "click", (event) => { const item = event.target.closest("[data-lobe-node]"); if (!item) return; selectedId = item.dataset.lobeNode; renderInspector(); draw(); });
-  listen(shell, "click", (event) => { const item = event.target.closest("[data-network-navigate]"); if (item && ["mission", "knowledge", "checks", "network", "robinhood"].includes(item.dataset.networkNavigate)) onNavigate(item.dataset.networkNavigate); });
-  const toggleExplosion = () => { explosionFrom = exploded; explosionTarget = explosionTarget ? 0 : 1; explosionStart = sceneTime; if (paused || !hasCanvas) { exploded = explosionTarget; explosionFrom = exploded; } disassemble.textContent = explosionTarget ? "ASSEMBLE" : "DISASSEMBLE"; disassemble.setAttribute("aria-pressed", String(Boolean(explosionTarget))); draw(); };
-  listen(disassemble, "click", toggleExplosion);
-  listen(reassemble, "click", () => { assemblyStart = paused || !hasCanvas ? null : sceneTime; draw(); });
-  listen(zoomOut, "click", () => setZoom(zoom - .1)); listen(zoomIn, "click", () => setZoom(zoom + .1)); listen(reset, "click", () => { yaw = -.6; pitch = .22; setZoom(1); }); listen(motion, "click", () => setMotion(!paused));
-  listen(stage, "pointerdown", (event) => { if (event.button !== 0 || event.pointerType === "touch" || event.target.closest("button")) return; drag = { x: event.clientX, y: event.clientY, yaw, pitch, id: event.pointerId }; stage.setPointerCapture?.(event.pointerId); stage.classList.add("brain-network-dragging"); });
-  listen(stage, "pointermove", (event) => { if (!drag) return; yaw = drag.yaw + (event.clientX - drag.x) * .008; pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (event.clientY - drag.y) * .008)); draw(); });
-  const endDrag = () => { if (drag) { try { stage.releasePointerCapture?.(drag.id); } catch { /* Capture can end outside the viewport. */ } drag = null; stage.classList.remove("brain-network-dragging"); } };
-  listen(stage, "pointerup", (event) => {
-    if (drag && Math.abs(event.clientX - drag.x) + Math.abs(event.clientY - drag.y) < 5) {
+  function setMotion(value) { paused = value; motion.textContent = paused ? '▷' : 'Ⅱ'; motion.setAttribute('aria-label', paused ? 'Resume network motion' : 'Pause network motion'); motion.setAttribute('aria-pressed', String(paused)); paused ? stopAnimation() : startAnimation(); draw(); }
+  function setZoom(value) { view.zoom = Math.min(1.65, Math.max(.65, value)); zoomLabel.textContent = `${Math.round(view.zoom * 100)}%`; zoomIn.disabled = view.zoom >= 1.65; zoomOut.disabled = view.zoom <= .65; draw(); }
+  function select(id) { if (!data.nodes.some((node) => node.id === id && node.region)) return; selectedId = id; renderInspector(); draw(); }
+  listen(labels, 'click', (event) => { const item = event.target.closest('[data-lobe-node]'); if (item) select(item.dataset.lobeNode); });
+  listen(inspector, 'click', (event) => {
+    if (event.target.closest('[data-network-close]')) { closeInspector({ restoreFocus: true }); return; }
+    const item = event.target.closest('[data-network-navigate]');
+    if (item && ['mission', 'knowledge', 'checks', 'network', 'robinhood'].includes(item.dataset.networkNavigate)) onNavigate(item.dataset.networkNavigate);
+  });
+  listen(shell, 'keydown', (event) => { if (event.key === 'Escape' && selectedId) { event.preventDefault(); closeInspector({ restoreFocus: true }); } });
+  const setMoveMode = (value) => { moveMode = value; move.setAttribute('aria-pressed', String(value)); rotate.setAttribute('aria-pressed', String(!value)); hint.textContent = value ? 'Drag to move · Select a region to explore' : 'Drag to rotate · Shift-drag to move · Select a region'; };
+  listen(move, 'click', () => setMoveMode(true)); listen(rotate, 'click', () => setMoveMode(false));
+  listen(zoomOut, 'click', () => setZoom(view.zoom - .1)); listen(zoomIn, 'click', () => setZoom(view.zoom + .1));
+  listen(reset, 'click', () => { Object.assign(view, defaultView()); setZoom(1); }); listen(motion, 'click', () => setMotion(!paused));
+  const clampPan = (value) => Math.max(-.36, Math.min(.36, value));
+  listen(stage, 'pointerdown', (event) => {
+    if (drag || event.button !== 0 || event.target.closest('button')) return;
+    drag = { x: event.clientX, y: event.clientY, ...view, id: event.pointerId, move: moveMode || event.shiftKey, moved: false };
+    try { stage.setPointerCapture?.(event.pointerId); } catch { /* Synthetic events may lack a pointer id. */ }
+    stage.classList.add('brain-network-dragging');
+  });
+  listen(stage, 'pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+    drag.moved ||= Math.abs(dx) + Math.abs(dy) >= 5;
+    if (!drag.moved) return;
+    if (drag.move) { view.panX = clampPan(drag.panX + dx / width); view.panY = clampPan(drag.panY + dy / height); }
+    else { view.yaw = drag.yaw + dx * .008; view.pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + dy * .008)); }
+    draw();
+  });
+  const endDrag = () => {
+    const previous = drag; drag = null; stage.classList.remove('brain-network-dragging');
+    if (previous) { try { stage.releasePointerCapture?.(previous.id); } catch { /* Capture may already have ended. */ } }
+  };
+  listen(stage, 'pointerup', (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    if (!drag.moved) {
       const rect = stage.getBoundingClientRect(), region = renderCanvas?.hitTest(event.clientX - rect.left, event.clientY - rect.top), node = data.nodes.find((item) => item.region === region);
-      if (node) { selectedId = node.id; renderInspector(); draw(); }
+      if (node) select(node.id); else closeInspector();
     }
     endDrag();
-  }); listen(stage, "pointercancel", endDrag);
-  listen(stage, "keydown", (event) => {
+  });
+  listen(stage, 'pointercancel', endDrag); listen(stage, 'lostpointercapture', endDrag); listen(window, 'blur', endDrag);
+  listen(stage, 'keydown', (event) => {
     if (event.target !== stage) return;
-    if (event.key === "ArrowLeft") yaw -= .12; else if (event.key === "ArrowRight") yaw += .12; else if (event.key === "ArrowUp") pitch = Math.max(-1.2, pitch - .1); else if (event.key === "ArrowDown") pitch = Math.min(1.2, pitch + .1); else if (event.key.toLowerCase() === "e") toggleExplosion(); else if (["+", "="].includes(event.key)) setZoom(zoom + .1); else if (event.key === "-") setZoom(zoom - .1); else return;
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[event.key]) {
+      const [x, y] = arrows[event.key];
+      if (event.shiftKey || moveMode) { view.panX = clampPan(view.panX + x * .03); view.panY = clampPan(view.panY + y * .03); }
+      else { view.yaw += x * .12; view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + y * .1)); }
+    } else if (['+', '='].includes(event.key)) setZoom(view.zoom + .1);
+    else if (event.key === '-') setZoom(view.zoom - .1);
+    else return;
     event.preventDefault(); draw();
   });
-  listen(document, "visibilitychange", () => { if (document.hidden) stopAnimation(); else startAnimation(); });
-  listen(window, "resize", refresh); listen(motionQuery, "change", (event) => setMotion(event.matches));
-  listen(document, "omensite:themechange", () => { canvasColors = palette(); renderCanvas?.setColors(canvasColors); draw(); });
-  const resizeObserver = typeof window?.ResizeObserver === "function" ? new window.ResizeObserver(refresh) : null; resizeObserver?.observe(stage);
-  const intersectionObserver = typeof window?.IntersectionObserver === "function" ? new window.IntersectionObserver((entries) => { intersecting = entries.some((entry) => entry.isIntersecting); if (intersecting) refresh(); else stopAnimation(); }) : null; intersectionObserver?.observe(stage);
+  listen(document, 'visibilitychange', () => { if (document.hidden) { endDrag(); stopAnimation(); } else startAnimation(); });
+  listen(window, 'resize', refresh); listen(motionQuery, 'change', (event) => setMotion(event.matches));
+  listen(document, 'omensite:themechange', () => { canvasColors = palette(); renderCanvas?.setColors(canvasColors); draw(); });
+  const resizeObserver = typeof window?.ResizeObserver === 'function' ? new window.ResizeObserver(refresh) : null; resizeObserver?.observe(stage);
+  const intersectionObserver = typeof window?.IntersectionObserver === 'function' ? new window.IntersectionObserver((entries) => { intersecting = entries.some((entry) => entry.isIntersecting); if (intersecting) refresh(); else stopAnimation(); }) : null; intersectionObserver?.observe(stage);
   function update(state = {}) {
-    if (disposed) return; data = buildBrainNetworkData(state); if (!data.nodes.some((node) => node.id === selectedId)) selectedId = "omen";
-    lock.textContent = data.paidCallsEnabled ? "PROVIDER ACCESS ENABLED" : "PAID CALLS LOCKED"; lock.dataset.enabled = String(data.paidCallsEnabled);
-    mode.textContent = data.run ? `${data.run.input?.mode === "demo" ? "OFFLINE DEMO" : "MISSION"} / ${label(data.run.status).toUpperCase()}` : "IDLE / OFFLINE READY";
-    footer.replaceChildren();
-    for (const [name, value] of [["AGENTS", data.counts.agents], ["TOOLS", data.counts.tools], ["SOURCES", data.counts.documents], ["MEMORIES", data.counts.memories]]) { const item = el("span"); item.append(el("b", number(value)), document.createTextNode(` ${name}`)); footer.append(item); }
-    footer.append(el("span", "4 SUPPORT MODULES · 3,400 DECORATIVE GLYPHS", "brain-network-footer-hint"));
-    renderNodes(); renderInspector(); renderActivity(); renderTelemetry(); refresh();
+    if (disposed) return;
+    data = buildBrainNetworkData(state);
+    mode.textContent = data.run ? `${data.run.input?.mode === 'demo' ? 'DEMO' : 'RESEARCH'} / ${label(data.run.status).toUpperCase()}` : 'IDLE';
+    renderNodes(); if (selectedId) renderInspector(); refresh();
   }
-  update(); setMotion(paused);
-  return { update, refresh, dispose() { if (disposed) return; disposed = true; stopAnimation(); endDrag(); resizeObserver?.disconnect(); intersectionObserver?.disconnect(); for (const remove of listeners) remove(); nodeButtons.clear(); lobeButtons.clear(); } };
+  update(); setZoom(view.zoom); setMotion(paused);
+  return { update, refresh, dispose() { if (disposed) return; disposed = true; stopAnimation(); endDrag(); resizeObserver?.disconnect(); intersectionObserver?.disconnect(); for (const remove of listeners) remove(); lobeButtons.clear(); } };
 }

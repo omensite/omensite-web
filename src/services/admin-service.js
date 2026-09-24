@@ -79,8 +79,9 @@ export function createAdminService({
       const [users, requests] = await Promise.all([userRepository.list(), requestRepository.list()]);
       const repositories = [userRepository, banRepository, sessionRegistry, requestRepository];
       const persistent = repositories.every((repository) => repository.getStorageStatus?.().persistent === true);
+      const storageKinds = new Set(repositories.map((repository) => repository.getStorageStatus?.().kind ?? "memory"));
       return {
-        storage: { kind: persistent ? "postgres" : "memory", persistent },
+        storage: { kind: persistent ? (storageKinds.size === 1 ? [...storageKinds][0] : "mixed") : "memory", persistent },
         users: await Promise.all(users.map((user) => safeUserSnapshot(user, { banRepository, sessionRegistry }))),
         requests: requests.map((request) => ({
           ...request,

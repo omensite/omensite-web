@@ -6,8 +6,10 @@ import ejs from "ejs";
 import { JSDOM } from "jsdom";
 import { initializeBrainPage } from "../../public/js/brain/brain-controller.js";
 
-const filename = fileURLToPath(new URL("../../views/pages/brain.ejs", import.meta.url));
+const filename = fileURLToPath(new URL("../../views/pages/research.ejs", import.meta.url));
 const template = readFileSync(filename, "utf8");
+const preferences = { provider: "gemini", symbol: "SPY", timeframe: "15m", accountSize: 50000, riskPercent: .5, pointValue: 1, minRewardRisk: 2, routes: {}, limits: { maxSteps: 12, maxModelCalls: 10, maxTokens: 64000, maxDurationMs: 120000, maxCostUsd: null } };
+const workspace = { preferences, drafts: {}, storage: { kind: "sqlite", persistent: true } };
 const state = { defaultProvider: "gemini", paidCallsEnabled: true, providers: [{ id: "gemini", model: "gemini-test", configured: true }, { id: "openai", model: "openai-test", configured: false }, { id: "claude", model: "claude-test", configured: true }], runs: [], documents: [] };
 const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -16,42 +18,46 @@ function run(overrides = {}) {
     graph: { nodes: [{ id: "research", role: "researcher", label: "Gather evidence", status: "complete" }], edges: [] }, trace: [{ at: "2026-09-14T12:00:00Z", type: "tool", agent: "researcher", summary: "Read context", details: { tool: "context.read" } }], result: { proposalStatus: "ready", thesis: { bias: "long", summary: "Illustrative proposal", entry: 100, stop: 98, target: 106, invalidation: "Below 98", evidence: ["Reclaim [snapshot]"], missingData: [] }, risk: { passed: true, quantity: 2, maxLoss: 200, riskBudget: 250, rewardRisk: 3, reasons: [] }, review: { verdict: "pass", reason: "Demo reviewed" }, citations: [{ id: "snapshot", title: "Snapshot", excerpt: "Fictional prices" }] }, ...overrides };
 }
 function fixture(t, fetchImpl, options = {}) {
-  const html = ejs.render(template, { page: { route: { key: "brain", title: "Agent Brain", uri: "brain", description: "Research control panel" } } }, { filename });
-  const dom = new JSDOM(`<meta name="csrf-token" content="test-csrf">${html}`, { url: "http://localhost/brain" });
-  const root = dom.window.document.querySelector("[data-brain]");
-  const instance = initializeBrainPage(root, { fetchImpl, ...options });
+  const html = ejs.render(template, { page: { route: { key: "research", title: "Research", uri: "research", description: "Research control panel" } } }, { filename });
+  const dom = new JSDOM(`<meta name="csrf-token" content="test-csrf">${html}`, { url: "http://localhost/research" });
+  const root = dom.window.document.querySelector("[data-route-view]");
+  const { workspaceFetch = async (url) => response(url === "/api/settings" ? workspace : {}), ...controllerOptions } = options;
+  const fetchWorkspace = (url, init) => url.startsWith("/api/settings") ? workspaceFetch(url, init) : fetchImpl(url, init);
+  const instance = initializeBrainPage(root, { fetchImpl: fetchWorkspace, ...controllerOptions });
   t.after(() => { instance.dispose(); dom.window.close(); });
   return { dom, root, instance, find: (name) => root.querySelector(`[data-brain-${name}]`), field: (name) => root.querySelector("form").elements.namedItem(name) };
 }
+
+test("a saved review note is restored only for its associated mission", async (t) => {
+  const saved = { ...workspace, drafts: { research: { fields: { approvalRunId: "run-1", approvalNote: "Check the date before accepting" } } } };
+  const app = fixture(t, async () => response({ ...state, runs: [run()] }), { workspaceFetch: async () => response(saved) });
+  const other = fixture(t, async () => response({ ...state, runs: [run({ id: "run-2" })] }), { workspaceFetch: async () => response(saved) });
+  await tick();
+  assert.equal(app.find("note").value, "Check the date before accepting");
+  assert.equal(other.find("note").value, "");
+});
+
+test("leaving an unfinished review saves its note with the exact mission id", async (t) => {
+  let written;
+  const app = fixture(t, async () => response({ ...state, runs: [run()] }), { workspaceFetch: async (url, options) => {
+    if (url.endsWith("/drafts/research")) written = JSON.parse(options.body).fields;
+    return response(workspace);
+  } });
+  await tick();
+  app.find("note").value = "Need a newer quote";
+  app.find("note").dispatchEvent(new app.dom.window.Event("input", { bubbles: true }));
+  app.instance.dispose(); await tick();
+  assert.equal(written.approvalRunId, "run-1");
+  assert.equal(written.approvalNote, "Need a newer quote");
+});
 test("Gemini defaults and unavailable role routes disable paid missions but keep demo", async (t) => {
   const app = fixture(t, async () => response(state)); await tick();
   assert.equal(app.field("provider").value, "gemini"); assert.equal(app.find("start").disabled, false);
   app.field("route_critic").value = "openai"; app.field("route_critic").dispatchEvent(new app.dom.window.Event("change", { bubbles: true }));
   assert.equal(app.find("start").disabled, true); assert.equal(app.find("demo").disabled, false);
-  assert.match(app.find("provider").textContent, /API key/); assert.equal(app.root.querySelector('input[type="password"]'), null);
+  assert.match(app.find("provider").textContent, /Settings/); assert.equal(app.root.querySelector('input[type="password"]'), null);
 });
 
-test("Cortex consumes the broker summary and clears stale connection claims on a failed refresh", async (t) => {
-  let fail = false;
-  const app = fixture(t, async () => fail ? response({ message: "Unavailable" }, 503) : response({ ...state, robinhoodState: { configured: true, connected: true, liveEnabled: false, paused: true, storage: { kind: "postgres", persistent: true } } }));
-  await tick();
-  app.root.querySelector('[data-lobe-node="module:robinhood"]').click();
-  const inspector = app.root.querySelector('.brain-network-inspector');
-  assert.match(inspector.textContent, /CONNECTED/); assert.match(inspector.textContent, /Live submissions disabled/);
-  fail = true; app.find('map-refresh').click(); await tick();
-  assert.match(inspector.textContent, /NOT CHECKED/); assert.doesNotMatch(inspector.textContent, /Live submissions disabled|CONNECTED/);
-});
-
-test("returning from Robinhood refreshes local connection switches without starting model or broker calls", async (t) => {
-  const calls = [], broker = { configured: true, connected: true, liveEnabled: false, paused: true, storage: { kind: "postgres", persistent: true }, tools: [], snapshots: [], actions: [], events: [], groups: [], missing: [] };
-  const app = fixture(t, async (url) => { calls.push(url); return response(url === "/api/robinhood/state" ? broker : { ...state, robinhoodState: broker }); });
-  await tick(); app.root.querySelector('[data-brain-view="robinhood"]').click(); await tick();
-  broker.connected = false;
-  app.root.querySelector('[data-brain-view="network"]').click(); await tick();
-  app.root.querySelector('[data-lobe-node="module:robinhood"]').click();
-  assert.match(app.root.querySelector('.brain-network-inspector').textContent, /NOT CONNECTED/);
-  assert.deepEqual(calls, ["/api/brain/state", "/api/robinhood/state", "/api/brain/state"]);
-});
 test("demo submits explicit role routes and budgets with CSRF then renders review", async (t) => {
   const calls = []; const app = fixture(t, async (url, options) => { calls.push({ url, options }); return response(url.endsWith("state") ? state : { run: run() }); }); await tick();
   app.field("route_critic").value = "claude"; app.field("maxCostUsd").value = "0.25"; app.find("demo").click(); await tick();
@@ -88,7 +94,7 @@ test("cancellation targets the selected run and stops further polling", async (t
 });
 test("navigation disposal aborts pending requests without modifying a detached page", async (t) => {
   let signal; const app = fixture(t, (_url, options) => { signal = options.signal; return new Promise(() => {}); });
-  app.instance.dispose(); assert.equal(signal.aborted, true);
+  await tick(); app.instance.dispose(); assert.equal(signal.aborted, true);
 });
 test("failed initial state can be retried with Refresh", async (t) => {
   let attempts = 0; const app = fixture(t, async () => ++attempts === 1 ? response({ message: "Temporarily offline" }, 503) : response(state)); await tick();
@@ -100,15 +106,10 @@ test("source form supports knowledge only and sends text with CSRF", async (t) =
   form.dispatchEvent(new app.dom.window.Event("submit", { bubbles: true, cancelable: true })); await tick();
   assert.equal(payload.kind, "knowledge"); assert.equal(payload.text, "Use dated session context."); assert.equal(form.querySelector('option[value="memory"]'), null); assert.match(app.find("documents").textContent, /ES lesson/);
 });
-test("offline evaluation report renders actual passed and failed scenarios", async (t) => {
-  const app = fixture(t, async (url) => response(url.endsWith("state") ? state : { passed: false, total: 2, failed: 1, durationMs: 12, cases: [{ id: "risk", name: "Risk", passed: true }, { id: "bad", name: "Budget", passed: false, detail: "Expected stop" }] })); await tick(); app.find("evals").click(); await tick();
-  assert.match(app.find("eval-results").textContent, /1 \/ 2 passed/); assert.match(app.find("eval-results").textContent, /FAIL · Budget/); assert.equal(app.find("evals").disabled, false);
-});
-
 test("configured keys cannot unlock analysis without explicit server enablement", async (t) => {
   for (const flag of [false, undefined, "true"]) {
     const calls = []; const app = fixture(t, async (url) => { calls.push(url); return response({ ...state, paidCallsEnabled: flag }); }); await tick();
-    assert.equal(app.find("start").disabled, true); assert.equal(app.find("demo").disabled, false); assert.equal(app.find("evals").disabled, false);
+    assert.equal(app.find("start").disabled, true); assert.equal(app.find("demo").disabled, false);
     assert.match(app.find("cost-lock").textContent, /Paid AI calls locked/);
     app.field("provider").value = "claude"; app.find("form").dispatchEvent(new app.dom.window.Event("change", { bubbles: true }));
     app.find("form").dispatchEvent(new app.dom.window.Event("submit", { bubbles: true, cancelable: true })); await tick();
@@ -123,73 +124,55 @@ test("locked mode still runs the explicit offline demo", async (t) => {
   assert.match(app.find("cost-lock").textContent, /Paid AI calls locked/);
 });
 
-test("readiness renders server evidence as text and refreshes after offline checks", async (t) => {
-  let evaluated = false; const hostile = '<img src=x onerror="alert(1)">';
-  const app = fixture(t, async (url) => {
-    if (url.endsWith("evals")) { evaluated = true; return response({ total: 1, failed: 0, durationMs: 5, cases: [{ name: "Offline controls", passed: true }] }); }
-    return response({ ...state, paidCallsEnabled: false, readiness: { checkedAt: "2026-09-14T12:00:00Z", checks: [{ id: "evals", label: hostile, status: evaluated ? "ready" : "pending", detail: evaluated ? "1 offline check passed; live model quality remains unverified." : "No offline check yet." }, { id: "access", label: "Provider access", status: "locked", detail: "Server blocks paid calls." }] } });
-  }); await tick();
-  assert.equal(app.root.querySelector("img"), null); assert.match(app.find("readiness-checks").textContent, /<img/);
-  assert.equal(app.find("readiness-checks").firstElementChild.dataset.status, "pending");
-  assert.match(app.find("readiness-time").textContent, /^Checked /);
-  app.find("evals").click(); await tick();
-  assert.equal(app.find("readiness-checks").firstElementChild.dataset.status, "ready");
-  assert.match(app.find("readiness-checks").textContent, /live model quality remains unverified/);
-  assert.equal(app.find("start").disabled, true); assert.equal(app.find("evals").disabled, false);
-});
-
 test("failed readiness refresh disables paid submissions and disposed failures leave markup unchanged", async (t) => {
   let attempts = 0; const app = fixture(t, async () => ++attempts === 1 ? response(state) : response({ message: "Server unavailable" }, 503)); await tick();
   assert.equal(app.find("start").disabled, false); app.find("refresh").click(); await tick();
   assert.equal(app.find("start").disabled, true); assert.equal(app.find("demo").disabled, false);
   let fail; const detached = fixture(t, () => new Promise((_resolve, reject) => { fail = reject; }));
-  detached.instance.dispose(); const before = detached.root.outerHTML; fail(new Error("Aborted")); await tick();
+  await tick(); detached.instance.dispose(); const before = detached.root.outerHTML; fail(new Error("Aborted")); await tick();
   assert.equal(detached.root.outerHTML, before);
 });
 
-test("network tabs preserve mission inputs and support keyboard navigation without model requests", async (t) => {
-  const calls = [];
-  const app = fixture(t, async (url) => { calls.push(url); return response({ ...state, paidCallsEnabled: false }); });
-  await tick();
+
+test('research restores account defaults and saved drafts while keeping configuration in Settings', async (t) => {
+  const saved = { ...workspace, preferences: { ...preferences, provider: 'claude', riskPercent: .75, routes: { critic: 'claude' } }, drafts: { research: { fields: { objective: 'Continue this saved research', symbol: 'BTC', timeframe: '1h', context: 'My unfinished dated market context' } }, knowledge: { fields: { title: 'Saved playbook', text: 'Saved source draft' } } } };
+  const app = fixture(t, async () => response(state), { workspaceFetch: async () => response(saved) }); await tick();
+  assert.equal(app.field('provider').value, 'claude'); assert.equal(app.field('riskPercent').value, '0.75');
+  assert.equal(app.field('objective').value, 'Continue this saved research'); assert.equal(app.field('symbol').value, 'BTC');
+  assert.equal(app.find('document-form').elements.title.value, 'Saved playbook');
+  assert.equal(app.root.querySelector('input[type="password"]'), null);
+  assert.equal(app.field('provider').type, 'hidden');
   const tab = (name) => app.root.querySelector(`[data-brain-view="${name}"]`);
-  const panel = (name) => app.root.querySelector(`[data-brain-panel="${name}"]`);
-  assert.equal(panel("network").hidden, false);
-  assert.equal(panel("mission").hidden, true);
-  app.find("open-mission").click();
-  assert.equal(panel("mission").hidden, false);
-  assert.equal(app.dom.window.document.activeElement, app.field("objective"));
-  app.field("context").value = "Keep this unsent draft while inspecting the neural network.";
-  tab("network").click();
-  tab("network").dispatchEvent(new app.dom.window.KeyboardEvent("keydown", { key: "End", bubbles: true }));
-  assert.equal(tab("checks").getAttribute("aria-selected"), "true");
-  assert.equal(app.dom.window.document.activeElement, tab("checks"));
-  tab("mission").click();
-  assert.match(app.field("context").value, /Keep this unsent draft/);
-  assert.equal(app.find("start").disabled, true);
-  assert.deepEqual(calls, ["/api/brain/state"]);
+  tab('mission').dispatchEvent(new app.dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  assert.equal(tab('knowledge').getAttribute('aria-selected'), 'true');
+  assert.equal(app.dom.window.document.activeElement, tab('knowledge'));
+  assert.equal(app.field('context').value, 'My unfinished dated market context');
 });
 
-test("network demo uses the real offline endpoint and exposes pending review without unlocking paid calls", async (t) => {
+test('unavailable saved defaults block paid research while the offline demo stays available', async (t) => {
   const calls = [];
-  const app = fixture(t, async (url, options) => {
-    calls.push({ url, options });
-    return response(url.endsWith("state") ? { ...state, paidCallsEnabled: false } : { run: run() });
-  });
-  await tick(); app.find("map-demo").click(); await tick();
-  const sent = calls.find((call) => call.url === "/api/brain/runs");
-  assert.equal(JSON.parse(sent.options.body).mode, "demo");
-  assert.equal(app.find("map-demo").disabled, true);
-  assert.equal(app.find("review-count").hidden, false);
-  assert.equal(app.find("review-count").textContent, "1");
-  assert.match(app.find("map-feedback").textContent, /ready for your review/);
-  assert.equal(app.find("start").disabled, true);
+  const app = fixture(t, async (url) => { calls.push(url); return response(state); }, { workspaceFetch: async () => response({ message: 'Unavailable' }, 503) }); await tick();
+  assert.equal(app.find('start').disabled, true); assert.equal(app.find('demo').disabled, false);
+  app.find('form').dispatchEvent(new app.dom.window.Event('submit', { bubbles: true, cancelable: true })); await tick();
+  assert.deepEqual(calls, ['/api/brain/state']);
 });
 
-test("network surfaces request failures while the mission panel is hidden", async (t) => {
-  const app = fixture(t, async (url) => url.endsWith("state") ? response({ ...state, paidCallsEnabled: false })
-    : response({ message: "Finish the existing research checkpoint first." }, 409));
-  await tick(); app.find("map-demo").click(); await tick();
-  assert.equal(app.root.querySelector('[data-brain-panel="mission"]').hidden, true);
-  assert.match(app.find("map-feedback").textContent, /Finish the existing/);
-  assert.equal(app.find("map-feedback").dataset.error, "true");
+test('late draft restoration does not overwrite input already typed by the user', async (t) => {
+  let complete;
+  const app = fixture(t, async () => response(state), { workspaceFetch: (url) => url === '/api/settings' ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(response({ saved: true })) });
+  await tick(); app.field('objective').value = 'Keep the text I am typing'; app.field('objective').dispatchEvent(new app.dom.window.Event('input', { bubbles: true }));
+  complete(response({ ...workspace, drafts: { research: { fields: { objective: 'Old saved draft' } } } })); await tick();
+  assert.equal(app.field('objective').value, 'Keep the text I am typing');
+});
+
+test('leaving Research flushes the draft with CSRF and does not write credentials to browser storage', async (t) => {
+  const writes = [];
+  const app = fixture(t, async () => response(state), { workspaceFetch: async (url, options) => { if (url === '/api/settings') return response(workspace); writes.push({ url, options }); return response({ saved: true }); } }); await tick();
+  app.field('context').value = 'Keep this research after I leave'; app.field('context').dispatchEvent(new app.dom.window.Event('input', { bubbles: true }));
+  app.instance.dispose(); await tick();
+  const saved = writes.find((item) => item.url === '/api/settings/drafts/research');
+  assert.equal(saved.options.method, 'PUT'); assert.equal(saved.options.keepalive, true);
+  assert.equal(saved.options.headers['X-CSRF-Token'], 'test-csrf');
+  assert.equal(JSON.parse(saved.options.body).fields.context, 'Keep this research after I leave');
+  assert.equal(app.dom.window.localStorage.length, 0);
 });

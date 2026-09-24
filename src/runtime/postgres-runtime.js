@@ -4,6 +4,7 @@ import pg from "pg";
 import { createPostgresBrokerRepository } from "../brokers/broker-repository.js";
 import { createPostgresJournalRepository } from "../repositories/postgres-journal-repository.js";
 import { createPostgresBrainRepository } from "../agent-brain/brain-repository.js";
+import { createPostgresWorkspaceRepository } from "../settings/workspace-repository.js";
 import { createPostgresUserRepository, createPostgresBanRepository, createPostgresIndicatorRequestRepository, createPostgresSessionRegistry } from "../repositories/postgres-admin-repositories.js";
 
 export function createPostgresRuntime(databaseConfig) {
@@ -32,8 +33,9 @@ export function createPostgresRuntime(databaseConfig) {
     journalRepository: createPostgresJournalRepository(pool),
     brainRepository: createPostgresBrainRepository(pool),
     brokerRepository: createPostgresBrokerRepository(pool),
+    workspaceRepository: createPostgresWorkspaceRepository(pool),
     readinessCheck: async () => {
-      const required = ["user_sessions", "journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "app_users", "app_bans", "indicator_requests", "revoked_user_sessions", "broker_workspaces"];
+      const required = ["user_sessions", "journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "app_users", "app_bans", "indicator_requests", "revoked_user_sessions", "broker_workspaces", "user_workspaces"];
       const result = await pool.query("SELECT bool_and(to_regclass('public.' || name) IS NOT NULL) AS ready FROM unnest($1::text[]) AS tables(name)", [required]);
       return result.rows[0]?.ready === true;
     },

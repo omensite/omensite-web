@@ -1,11 +1,15 @@
 <aside class="sidebar" data-sidebar>
-  <div class="cortex-nav-label">WORKSPACE <span>01</span></div>
+  <a class="cortex-brand workspace-brand" href="/home" data-nav-link aria-label="Omensite home">OMEN<span>SITE</span><small>AGENTIC TRADING</small></a>
   <nav aria-label="Workspace navigation">
-    <% const labels = {home: 'Overview', brain: 'Agent brain', trader: 'Research', indicators: 'Indicators', 'market-news': 'Market calendar', 'alerts-ict': 'ICT alerts', 'alerts-sr': 'S/R alerts', journal: 'Trade journal', admin: 'Administration'}; %>
-    <% page.navigation.forEach((item, index) => { const active = item.key === page.route.key || (item.key === 'journal' && ['journal-new', 'journal-public'].includes(page.route.key)); %>
-      <a class="navitem<%= active ? ' active' : '' %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>" data-required-capability="<%= item.capability %>"<% if (active) { %> aria-current="page"<% } %>><span class="cortex-nav-index" aria-hidden="true"><%= String(index + 1).padStart(2, '0') %></span><span><%= labels[item.key] ?? item.title ?? item.uri %></span></a>
+    <% const labels = {home: 'Overview', brain: 'Brain', research: 'Research', accounts: 'Accounts', journal: 'Journal', settings: 'Settings'}; %>
+    <% page.navigation.forEach((item, index) => { const active = item.key === page.route.key || (item.key === 'journal' && ['journal-new', 'journal-public'].includes(page.route.key)) || (item.key === 'research' && page.route.key === 'market-news') || (item.key === 'settings' && page.route.key === 'admin'); %>
+      <a class="navitem<%= active ? ' active' : '' %>" href="<%= item.path %>" data-nav-link data-nav-key="<%= item.key %>" data-required-capability="<%= item.capability %>"<% if (active) { %> aria-current="page"<% } %>><span class="cortex-nav-index" aria-hidden="true"><%= ['⌂','◈','⌕','▣','▤','⚙'][index] %></span><span><%= labels[item.key] %></span></a>
     <% }) %>
   </nav>
-  <div class="cortex-nav-note"><span class="cortex-node-mark" aria-hidden="true">▰ ▪ ▪</span><strong>YOUR COMMAND CENTER</strong><p>Research. Review.<br>Execute with intent.</p></div>
-  <div class="sidebar-foot"><span class="cortex-nav-label">OPERATOR</span><strong class="cortex-operator"><%= page.operator?.displayName ?? page.operator?.username ?? 'Authenticated operator' %></strong><div class="cortex-session-detail"><span>SESSION</span><span data-uptime>0m 0s</span></div><button class="btn sidebar-logout" type="button" data-logout>SIGN OUT ↗</button></div>
+  <div class="sidebar-foot">
+    <% if (typeof designPreview !== 'undefined' && designPreview) { %><span class="cortex-preview">ISOLATED DESIGN PREVIEW</span><% } %>
+    <div class="cortex-theme" role="group" aria-label="Color theme"><button type="button" data-color-theme="core" aria-pressed="true">CORE</button><button type="button" data-color-theme="daylight" aria-pressed="false">DAYLIGHT</button></div>
+    <span class="cortex-nav-label">SIGNED IN WITH DISCORD</span><strong class="cortex-operator"><%= page.operator?.displayName ?? page.operator?.username ?? 'Operator' %></strong>
+    <button class="btn sidebar-logout" type="button" data-logout>Sign out ↗</button>
+  </div>
 </aside>

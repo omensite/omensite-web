@@ -46,7 +46,7 @@ const adminFragment = `
   </section>`;
 
 test("home journal count hydrates from the shared journal service after full and fragment renders", async () => {
-  const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, {
+  const dom = new JSDOM(`<div data-app-shell data-shell-body><main data-main>${homeFragment}</main></div>`, {
     url: "http://localhost/home",
   });
   dom.window.matchMedia = () => ({ matches: true });
@@ -80,7 +80,7 @@ test("home journal count hydrates from the shared journal service after full and
 });
 
 test("home journal count retains accepted muted styling at zero", () => {
-  const dom = new JSDOM(`<div data-shell-body><main data-main>${homeFragment}</main></div>`, { url: "http://localhost/home" });
+  const dom = new JSDOM(`<div data-app-shell data-shell-body><main data-main>${homeFragment}</main></div>`, { url: "http://localhost/home" });
   dom.window.matchMedia = () => ({ matches: true });
   const instance = initializeAppShell({
     documentRef: dom.window.document,
@@ -97,7 +97,7 @@ test("home journal count retains accepted muted styling at zero", () => {
 });
 
 test("navigating away from Market News clears its scheduled refresh", async (t) => {
-  const dom = new JSDOM(`<div data-shell-body><main data-main>${marketNewsFragment}</main></div>`, {
+  const dom = new JSDOM(`<div data-app-shell data-shell-body><main data-main>${marketNewsFragment}</main></div>`, {
     url: "http://localhost/market-news",
   });
   dom.window.matchMedia = () => ({ matches: true });
@@ -141,7 +141,7 @@ test("navigating away from Market News clears its scheduled refresh", async (t) 
 test("logout sends the authenticated page CSRF token", async (t) => {
   const dom = new JSDOM(`
     <meta name="csrf-token" content="csrf-from-session">
-    <div data-shell-body><button data-logout></button><main data-main>${homeFragment}</main></div>
+    <div data-app-shell data-shell-body><button data-logout></button><main data-main>${homeFragment}</main></div>
   `, { url: "http://localhost/home" });
   dom.window.matchMedia = () => ({ matches: true });
   let requestOptions;
@@ -163,8 +163,8 @@ test("logout sends the authenticated page CSRF token", async (t) => {
   assert.equal(requestOptions.headers["X-CSRF-Token"], "csrf-from-session");
 });
 
-test("Indicators routes are progressively enhanced by the app shell", async (t) => {
-  const dom = new JSDOM(`<div data-shell-body><main data-main>${indicatorFragment}</main></div>`, {
+test("retired indicator markup cannot issue new requests through the app shell", async (t) => {
+  const dom = new JSDOM(`<div data-app-shell data-shell-body><main data-main>${indicatorFragment}</main></div>`, {
     url: "http://localhost/indicators",
   });
   dom.window.matchMedia = () => ({ matches: true });
@@ -190,12 +190,12 @@ test("Indicators routes are progressively enhanced by the app shell", async (t) 
   );
   await new Promise((resolve) => dom.window.setTimeout(resolve, 0));
 
-  assert.equal(requestOptions.method, "POST");
-  assert.equal(dom.window.document.querySelector("[data-indicator-request-status]").textContent, "PENDING");
+  assert.equal(requestOptions, undefined);
+  assert.equal(dom.window.document.querySelector("[data-indicator-request-status]").textContent, "NOT REQUESTED");
 });
 
 test("Admin routes are progressively enhanced by the app shell", async (t) => {
-  const dom = new JSDOM(`<div data-shell-body><main data-main>${adminFragment}</main></div>`, {
+  const dom = new JSDOM(`<div data-app-shell data-shell-body><main data-main>${adminFragment}</main></div>`, {
     url: "http://localhost/admin",
   });
   dom.window.matchMedia = () => ({ matches: true });

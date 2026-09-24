@@ -1,5 +1,6 @@
 import { createBrainNetwork } from "./brain-network.js";
 import { initializeRobinhood } from "./robinhood-controller.js";
+import { createWorkspaceRequest, persistForm, waitForDrafts, queueDraft } from "../workspace-client.js";
 
 const instances = new WeakMap();
 const activeStatuses = new Set(["running"]);
@@ -15,6 +16,12 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
   const find = (name) => root.querySelector(`[data-brain-${name}]`);
   const form = find("form");
   const field = (name) => form.elements.namedItem(name);
+  const workspaceRequest = createWorkspaceRequest(root, fetchImpl);
+  const draftStatus = root.querySelector("[data-draft-status]");
+  let savedReview = {};
+  const researchDraft = persistForm(form, { name: "research", fields: ["objective", "symbol", "timeframe", "context"], request: workspaceRequest, status: draftStatus, readExtra: () => savedReview, windowRef });
+  const knowledgeDraft = persistForm(find("document-form"), { name: "knowledge", fields: ["title", "text"], request: workspaceRequest, status: find("library-feedback"), windowRef });
+  let workspaceLoaded = false, formTouched = false;
   const csrf = documentRef.querySelector('meta[name="csrf-token"]')?.content ?? "";
   let providers = [], runs = [], savedDocuments = [], toolDefinitions = [], selected = null, brokerState = null, ready = false, paidCallsEnabled = false, disposed = false, busy = false, timer, loading = false, generation = 0;
   const requests = new Set(), listeners = [];
@@ -44,7 +51,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     if (view === "robinhood") void robinhood?.open();
     if (view === "network" && previousView === "robinhood") void refreshReadiness();
   }
-  function on(element, event, handler) { element.addEventListener(event, handler); listeners.push(() => element.removeEventListener(event, handler)); }
+  function on(element, event, handler) { element?.addEventListener(event, handler); listeners.push(() => element?.removeEventListener(event, handler)); }
   function el(tag, text, className) { const value = documentRef.createElement(tag); if (text !== undefined) value.textContent = String(text ?? ""); if (className) value.className = className; return value; }
   function feedback(message, error = false, target = "feedback") {
     if (disposed) return;
@@ -69,7 +76,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     const pending = runs.some((run) => pendingStatuses.has(run.status));
     const usedProviders = new Set([field("provider").value, ...["planner", "researcher", "strategist", "critic"].map((role) => field(`route_${role}`).value).filter(Boolean)]);
     const configured = [...usedProviders].every((id) => providers.some((provider) => provider.id === id && provider.configured));
-    find("start").disabled = !ready || busy || pending || !paidCallsEnabled || !configured;
+    find("start").disabled = !ready || !workspaceLoaded || busy || pending || !paidCallsEnabled || !configured;
     find("demo").disabled = !ready || busy || pending;
     if (find("map-demo")) find("map-demo").disabled = !ready || busy || pending;
     if (find("review-count")) {
@@ -81,13 +88,13 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     find("cancel").hidden = !running; find("cancel").disabled = busy;
     find("approve").disabled = busy; find("reject").disabled = busy || selected?.status === "approving";
     const provider = providers.find((item) => item.id === field("provider").value);
-    find("provider").textContent = provider ? `${provider.model} · ${!paidCallsEnabled ? "Paid access is locked. Provider selection does not start any calls." : configured ? "Selected providers configured on server." : "A selected provider has no server API key. Offline demo remains available."}` : "Provider configuration unavailable.";
+    find("provider").textContent = provider ? `${provider.label || provider.id}${provider.model ? ` / ${provider.model}` : ""} · ${!paidCallsEnabled ? "Paid access is locked." : configured ? "Configured in Settings." : "Choose a configured provider in Settings. Offline demo remains available."}` : "Provider configuration unavailable.";
     find("cost-lock").textContent = paidCallsEnabled ? "Paid AI access is enabled on the server. Starting an analysis can incur provider charges." : paidLockMessage;
     find("cost-lock").dataset.enabled = String(paidCallsEnabled);
     updateNetwork();
   }
   function renderReadiness(readiness) {
-    if (disposed) return;
+    if (disposed || !find("readiness-checks")) return;
     const checks = Array.isArray(readiness?.checks) ? readiness.checks : [];
     find("readiness-checks").replaceChildren(...checks.map((check) => {
       const item = el("li", undefined, "brain-readiness-check");
@@ -148,7 +155,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     if (disposed) return;
     const changed = selected?.id !== run.id;
     selected = run;
-    if (changed) find("note").value = "";
+    if (changed) find("note").value = savedReview.approvalRunId === run.id ? savedReview.approvalNote ?? "" : "";
     const index = runs.findIndex((item) => item.id === run.id); if (index < 0) runs.unshift(run); else runs[index] = run;
     runs = runs.slice(0, 20); renderHistory();
     find("status").textContent = title(run.status); find("status").dataset.state = run.result?.proposalStatus ?? run.status;
@@ -191,7 +198,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
       const state = await request("/api/brain/state"); if (disposed) return;
       providers = state.providers ?? []; runs = state.runs ?? []; paidCallsEnabled = state.paidCallsEnabled === true; brokerState = state.robinhoodState ?? null;
       toolDefinitions = state.toolDefinitions ?? [];
-      if (!ready && state.defaultProvider) field("provider").value = state.defaultProvider;
+      if (!ready && !workspaceLoaded && state.defaultProvider) field("provider").value = state.defaultProvider;
       ready = true; renderDocuments(state.documents); renderHistory(); renderReadiness(state.readiness);
       const current = runs.find((run) => run.id === selected?.id) ?? (!selected ? runs[0] : null);
       if (current) { render(current); schedulePoll(); } else if (!selected) feedback(paidCallsEnabled ? "Ready. Start a mission or explore the workflow with a demo." : paidLockMessage);
@@ -222,6 +229,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
     if (busy || !selected) return; busy = true; updateButtons(); const current = selected;
     try {
       const { run } = await request(`/api/brain/runs/${encodeURIComponent(current.id)}/decision`, { version: current.version, decision, note: find("note").value });
+      if (savedReview.approvalRunId === current.id) { savedReview = {}; researchDraft.changed(); }
       if (disposed) return; if (selected?.id === run.id) render(run); const { documents } = await request("/api/brain/documents"); if (!disposed) { renderDocuments(documents); await refreshReadiness(); }
     } catch (error) { feedback(error.message, true); }
     finally { busy = false; if (!disposed) updateButtons(); }
@@ -241,6 +249,7 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
   if (find("map-demo")) on(find("map-demo"), "click", () => void start("demo"));
   if (find("map-refresh")) on(find("map-refresh"), "click", () => void loadState());
   on(form, "change", updateButtons);
+  on(find("note"), "input", () => { if (selected) { savedReview = { approvalNote: find("note").value, approvalRunId: selected.id }; researchDraft.changed(); } });
   on(find("demo"), "click", () => void start("demo"));
   on(find("refresh"), "click", () => void loadState());
   on(find("approve"), "click", () => void decide("approve")); on(find("reject"), "click", () => void decide("reject"));
@@ -248,14 +257,33 @@ export function initializeBrainPage(root, { fetchImpl = root.ownerDocument.defau
   on(find("history"), "click", async (event) => { const button = event.target.closest("[data-run-id]"); if (!button || busy) return; const current = ++generation; windowRef.clearTimeout(timer); try { const { run } = await request(`/api/brain/runs/${encodeURIComponent(button.dataset.runId)}`); if (!disposed && current === generation) { render(run); schedulePoll(); } } catch (error) { feedback(error.message, true); } });
   on(find("document-form"), "submit", async (event) => {
     event.preventDefault(); const docForm = event.currentTarget, button = docForm.querySelector("button"); if (button.disabled || !docForm.reportValidity()) return; button.disabled = true;
-    try { await request("/api/brain/documents", Object.fromEntries(["title", "text", "kind"].map((key) => [key, docForm.elements.namedItem(key).value]))); const { documents } = await request("/api/brain/documents"); if (!disposed) { docForm.reset(); renderDocuments(documents); feedback("Source saved. It is available for retrieval in future missions.", false, "library-feedback"); await refreshReadiness(); } }
+    try { await request("/api/brain/documents", Object.fromEntries(["title", "text", "kind"].map((key) => [key, docForm.elements.namedItem(key).value]))); const { documents } = await request("/api/brain/documents"); if (!disposed) { docForm.reset(); await knowledgeDraft.clear(); renderDocuments(documents); feedback("Source saved. It is available for retrieval in future missions.", false, "library-feedback"); await refreshReadiness(); } }
     catch (error) { feedback(error.message, true, "library-feedback"); } finally { if (!disposed) button.disabled = false; }
   });
   on(find("documents"), "click", async (event) => { const button = event.target.closest("[data-document-id]"); if (!button || button.disabled) return; button.disabled = true; try { await request(`/api/brain/documents/${encodeURIComponent(button.dataset.documentId)}`, {}, "DELETE"); const { documents } = await request("/api/brain/documents"); if (!disposed) { renderDocuments(documents); feedback("Source removed from future retrieval. Existing run citations retain their snapshot.", false, "library-feedback"); await refreshReadiness(); } } catch (error) { feedback(error.message, true, "library-feedback"); if (!disposed) button.disabled = false; } });
   on(find("evals"), "click", async () => { const button = find("evals"); if (button.disabled) return; button.disabled = true; find("eval-results").textContent = "Running isolated system scenarios…"; try { const report = await request("/api/brain/evals", {}); if (disposed) return; const rows = report.cases.map((item) => { const row = el("p", `${item.passed ? "PASS" : "FAIL"} · ${item.name}${item.detail ? ` — ${item.detail}` : ""}`, "brain-eval-result"); row.dataset.passed = String(item.passed); return row; }); find("eval-results").replaceChildren(el("p", `${report.total - report.failed} / ${report.total} passed · ${number(report.durationMs)} ms`), ...rows); await refreshReadiness(); } catch (error) { if (!disposed) find("eval-results").textContent = error.message; } finally { if (!disposed) button.disabled = false; } });
   const viewParams = new URLSearchParams(windowRef.location?.search);
-  selectView(viewParams.has("robinhood") || viewParams.get("view") === "robinhood" ? "robinhood" : "network");
+  selectView(viewParams.get("view") === "knowledge" ? "knowledge" : "mission");
   metrics();
-  const instance = { refresh: loadState, dispose() { disposed = true; generation += 1; windowRef.clearTimeout(timer); network?.dispose(); robinhood?.dispose(); for (const controller of requests) controller.abort(); for (const remove of listeners) remove(); instances.delete(root); } };
-  instances.set(root, instance); void loadState(); return instance;
+  const instance = { refresh: loadState, dispose() { researchDraft.dispose(); knowledgeDraft.dispose(); disposed = true; generation += 1; windowRef.clearTimeout(timer); network?.dispose(); robinhood?.dispose(); for (const controller of requests) controller.abort(); for (const remove of listeners) remove(); instances.delete(root); } };
+  async function loadWorkspace() {
+    try {
+      await waitForDrafts();
+      const settings = await request("/api/settings"); if (disposed || !settings.preferences) return;
+      const preferences = settings.preferences;
+      for (const name of ["provider", "symbol", "timeframe", "accountSize", "riskPercent", "pointValue", "minRewardRisk"]) {
+        if (!formTouched || !["symbol", "timeframe"].includes(name)) field(name).value = preferences[name];
+      }
+      for (const role of ["planner", "researcher", "strategist", "critic"]) field(`route_${role}`).value = preferences.routes[role] ?? "";
+      for (const name of ["maxSteps", "maxModelCalls", "maxTokens", "maxCostUsd"]) field(name).value = preferences.limits[name] ?? "";
+      field("durationSeconds").value = preferences.limits.maxDurationMs / 1000;
+      researchDraft.restore(settings.drafts?.research?.fields); knowledgeDraft.restore(settings.drafts?.knowledge?.fields);
+      const draft = settings.drafts?.research?.fields;
+      if (typeof draft?.approvalRunId === "string" && typeof draft.approvalNote === "string") savedReview = { approvalRunId: draft.approvalRunId, approvalNote: draft.approvalNote };
+      workspaceLoaded = true;
+      if (draftStatus) draftStatus.textContent = settings.storage?.persistent ? "Your drafts are saved automatically" : "Temporary storage · configure persistence in Settings";
+    } catch { if (draftStatus && !disposed) draftStatus.textContent = "Saved defaults unavailable. Refresh before starting paid research."; }
+  }
+  on(form, "input", () => { formTouched = true; });
+  instances.set(root, instance); void loadWorkspace().then(() => { if (!disposed) return loadState(); }); return instance;
 }

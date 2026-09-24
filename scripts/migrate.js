@@ -8,15 +8,15 @@ export function assertMigrationAllowed(env = process.env) {
   if (!env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required");
 }
 
-export async function migrate(env = process.env) {
+export async function migrate(env = process.env, { createPool = (options) => new pg.Pool(options) } = {}) {
   assertMigrationAllowed(env);
-  const pool = new pg.Pool({
+  const pool = createPool({
     connectionString: env.DATABASE_URL,
     ssl: env.DATABASE_SSL === "require" ? { rejectUnauthorized: true } : undefined,
     max: 1,
   });
   try {
-    const migrations = await Promise.all(["001_initial.sql", "002_agent_brain.sql", "003_admin_persistence.sql", "004_robinhood.sql"].map((filename) =>
+    const migrations = await Promise.all(["001_initial.sql", "002_agent_brain.sql", "003_admin_persistence.sql", "004_robinhood.sql", "005_user_workspaces.sql"].map((filename) =>
       readFile(new URL(`../migrations/${filename}`, import.meta.url), "utf8")));
     await pool.query("BEGIN");
     for (const sql of migrations) await pool.query(sql);

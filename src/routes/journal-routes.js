@@ -9,12 +9,12 @@ export function createJournalRoutes({ journalRepository }) {
   const router = Router();
   const journalController = createJournalController();
   const journalApiController = createJournalApiController({ journalRepository });
-  router.use(requireCapability(CAPABILITIES.JOURNAL));
-  router.get("/api/journal", journalApiController.list);
-  router.get("/api/journal/:id", journalApiController.find);
-  router.post("/api/journal", requireCsrf, journalApiController.create);
-  router.get("/journal", journalController.index);
-  router.get("/journal/new", journalController.create);
-  router.get("/journal/:id", journalController.publicEntry);
+  const access = requireCapability(CAPABILITIES.JOURNAL);
+  router.get("/api/journal", access, journalApiController.list);
+  router.get("/api/journal/:id", access, journalApiController.find);
+  router.post("/api/journal", access, requireCsrf, journalApiController.create);
+  router.get("/journal", access, journalController.index);
+  router.get("/journal/new", access, journalController.create);
+  router.get("/journal/:id", access, journalController.publicEntry);
   return router;
 }

@@ -10,7 +10,7 @@ export function createTraderRoutes({ traderService, logger }) {
   const route = ROUTE_BY_KEY.trader;
   const access = requireCapability(route.capability);
   const controller = createTraderController({ traderService, logger });
-  router.get(route.path, access, createPageController().show(route));
+  router.get(route.path, access, (req, res) => res.redirect("/research"));
   router.get("/api/trader/state", access, controller.state);
   router.post("/api/trader/runs", access, requireCsrf, controller.run);
   return router;

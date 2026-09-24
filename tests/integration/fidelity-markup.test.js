@@ -4,7 +4,7 @@ import request from "supertest";
 import { JSDOM } from "jsdom";
 import { createTestApp, loginTestOperator } from "../helpers/auth-test-helpers.js";
 
-test("server pages expose Cortex workspaces with preserved interactive calendar and access hooks", async () => {
+test("the overview guides setup, research and account review while preserving the economic calendar", async () => {
   const agent = await loginTestOperator(createTestApp({
     sessionSecret: "test-secret",
     marketNewsService: {
@@ -28,43 +28,41 @@ test("server pages expose Cortex workspaces with preserved interactive calendar 
   }));
   const home = await agent.get("/home").expect(200);
   const homeDom = new JSDOM(home.text);
-  assert.equal(homeDom.window.document.querySelectorAll(".cortex-kpis .cortex-kpi").length, 4);
-  assert.ok(homeDom.window.document.querySelector('.cortex-home-command a[href="/brain"][data-nav-link]'));
-  assert.ok(homeDom.window.document.querySelector('.cortex-home-command a[href="/brain?view=robinhood"][data-nav-link]'));
-  assert.equal(homeDom.window.document.querySelectorAll(".cortex-workspace-grid .cortex-workspace-card").length, 6);
-  assert.equal(homeDom.window.document.querySelector("[data-journal-count]").textContent, "—");
+  assert.equal(homeDom.window.document.querySelectorAll(".setup-steps > li").length, 3);
+  assert.ok(homeDom.window.document.querySelector('[data-route-view] a[href="/brain"][data-nav-link]'));
+  for (const route of ["/settings", "/research", "/accounts"]) {
+    assert.ok(homeDom.window.document.querySelector(`.setup-steps a[href="${route}"][data-nav-link]`));
+  }
   homeDom.window.close();
-  await agent.get("/indicators").expect(200)
-    .expect(/indicator-console/).expect(/indicator-catalog-row/).expect(/indicator-request/).expect(/terminal-check/);
   const response = await agent.get("/market-news").expect(200);
   assert.match(response.text, /market-calendar/);
   assert.match(response.text, /calendar-toolbar/);
   assert.match(response.text, /calendar-event/);
   assert.match(response.text, /calendar-state/);
-  await agent.get("/alerts/ict").expect(200).expect(/cortex-panel/).expect(/data-alert-standby/).expect(/No signal rules configured/);
 });
 
-test("Indicators retain a readable script grid and access form in Cortex panels", async () => {
+test("Brain stays a focused canvas while Research, Settings and Accounts contain their own controls", async () => {
   const app = createTestApp();
   const agent = await loginTestOperator(app);
-  const [response, stylesheet] = await Promise.all([
-    agent.get("/indicators").expect(200),
-    request(app).get("/css/omensite.css").expect(200),
-  ]);
-  const dom = new JSDOM(response.text);
-  const style = dom.window.document.createElement("style");
-  style.textContent = stylesheet.text;
-  dom.window.document.head.append(style);
-
-  const rowStyle = dom.window.getComputedStyle(dom.window.document.querySelector("[data-indicator-catalog-row]"));
-  const consoleStyle = dom.window.getComputedStyle(dom.window.document.querySelector(".indicator-console"));
-  const formStyle = dom.window.getComputedStyle(dom.window.document.querySelector("[data-indicator-request-form]"));
-  assert.equal(rowStyle.display, "grid");
-  assert.equal(consoleStyle.borderTopWidth, "1px");
-  assert.equal(formStyle.display, "grid");
-  assert.ok(dom.window.document.querySelector(".indicator-console.cortex-panel"));
-  assert.ok(dom.window.document.querySelector(".indicator-request.cortex-panel"));
-  dom.window.close();
+  const brain = new JSDOM((await agent.get("/brain").expect(200)).text);
+  assert.ok(brain.window.document.querySelector("[data-brain-network]"));
+  assert.equal(brain.window.document.querySelectorAll("[data-route-view] form").length, 0);
+  assert.equal(brain.window.document.querySelector("[data-brain-form]"), null);
+  assert.equal(brain.window.document.querySelector("[data-robinhood]"), null);
+  brain.window.close();
+  const research = new JSDOM((await agent.get("/research").expect(200)).text);
+  assert.ok(research.window.document.querySelector("[data-brain-form]"));
+  assert.ok(research.window.document.querySelector('[data-brain-panel="knowledge"]'));
+  assert.equal(research.window.document.querySelector('input[name="apiKey"]'), null);
+  assert.equal(research.window.document.querySelector('select[name="provider"]'), null);
+  research.window.close();
+  const settings = new JSDOM((await agent.get("/settings").expect(200)).text);
+  assert.equal(settings.window.document.querySelectorAll('[data-provider-form] input[type="password"]').length, 3);
+  assert.ok(settings.window.document.querySelector("[data-connection-connect]"));
+  assert.ok(settings.window.document.querySelector("[data-settings-defaults]"));
+  settings.window.close();
+  const accounts = await agent.get("/accounts").expect(200);
+  assert.match(accounts.text, /data-rh-actions/);
 });
 
 test("Admin uses Cortex panels with dense action rows and mobile field labels", async () => {

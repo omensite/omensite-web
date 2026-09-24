@@ -1,6 +1,10 @@
 import { createNavigationController } from "./navigation-controller.js";
 import { initializeJournalPage } from "./journal/journal-page-controller.js";
-import { initializeIndicatorAccessPage } from "./indicators/indicator-access-controller.js";
+import { initializeSettings } from "./settings-controller.js";
+import { initializeBrainCanvas } from "./brain/brain-canvas-controller.js";
+import { initializeAccounts } from "./accounts-controller.js";
+import { initializeOverview } from "./overview-controller.js";
+import { createWorkspaceRequest, queueDraft, waitForDrafts } from "./workspace-client.js";
 import { initializeAdminPage } from "./admin/admin-controller.js";
 import { HttpJournalRepository } from "./journal/http-journal-repository.js";
 import { createJournalService } from "./journal/journal-service.js";
@@ -58,12 +62,18 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
   const initializeShellPage = (root, route) => {
     disposeActiveRoute();
     disposeActiveRoute = () => {};
-    setActiveNavigation(documentRef, route.key);
+    documentRef.querySelector("[data-app-shell]").dataset.activeRoute = route.key;
+    setActiveNavigation(documentRef, route.key === "market-news" ? "research" : route.key === "admin" ? "settings" : route.key);
     drawer.close();
     const journalCount = hydrateJournalCount(root, service);
     journalCount?.catch?.(() => showTerminalToast(documentRef, "JOURNAL DATA UNAVAILABLE"));
     if (route.key.startsWith("journal")) {
-      initializeJournalPage(root, { ...service, pageState: journalPageState, navigate: (path) => navigator.navigate(path) });
+      const request = createWorkspaceRequest(root, fetchImpl);
+      const journal = initializeJournalPage(root, { ...service, pageState: journalPageState, navigate: (path) => navigator.navigate(path),
+        loadDraft: async () => { await waitForDrafts(); return (await request("/api/settings")).drafts?.journal?.fields; },
+        saveDraft: (fields, options) => queueDraft(request, "journal", fields, options),
+      });
+      disposeActiveRoute = journal?.dispose ?? (() => {});
     }
     if (route.key === "market-news") {
       disposeActiveRoute = initializeMarketNewsPage(root, { fetchImpl, windowRef }).dispose;
@@ -74,15 +84,11 @@ export function initializeAppShell({ documentRef = document, windowRef = window,
         showToast: (message) => showTerminalToast(documentRef, message),
       }).dispose;
     }
-    if (route.key === "brain") {
-      disposeActiveRoute = initializeBrainPage(root, { fetchImpl, windowRef }).dispose;
-    }
-    if (route.key === "indicators") {
-      disposeActiveRoute = initializeIndicatorAccessPage(root, {
-        fetchImpl,
-        showToast: (message) => showTerminalToast(documentRef, message),
-      }).dispose;
-    }
+    if (route.key === "brain") disposeActiveRoute = initializeBrainCanvas(root, { fetchImpl, windowRef, navigate: (path) => navigator.navigate(path) }).dispose;
+    if (route.key === "research") disposeActiveRoute = initializeBrainPage(root, { fetchImpl, windowRef }).dispose;
+    if (route.key === "settings") disposeActiveRoute = initializeSettings(root, { fetchImpl, windowRef }).dispose;
+    if (route.key === "accounts") disposeActiveRoute = initializeAccounts(root, { fetchImpl, windowRef, navigate: (path) => navigator.navigate(path) }).dispose;
+    if (route.key === "home") disposeActiveRoute = initializeOverview(root, { fetchImpl }).dispose;
     if (route.key === "admin") {
       disposeActiveRoute = initializeAdminPage(root, {
         fetchImpl,

@@ -7,7 +7,7 @@ import { requireCapability } from "../middleware/require-capability.js";
 export function createPageRoutes({ marketNewsService, logger } = {}) {
   const router = Router();
   const pageController = createPageController();
-  for (const key of ["home", "alerts-ict", "alerts-sr"]) {
+  for (const key of ["home", "research", "accounts", "settings"]) {
     const route = ROUTE_BY_KEY[key];
     router.get(route.path, requireCapability(route.capability), pageController.show(route));
   }

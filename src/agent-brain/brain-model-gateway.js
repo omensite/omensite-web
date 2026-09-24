@@ -103,8 +103,7 @@ export function createBrainModelGateway({ aiProvider, repository, now = () => ne
   const secrets = ["GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
     .map((name) => process.env[name]).filter((value) => typeof value === "string" && value.length > 0);
 
-  function getStatus() {
-    const status = aiProvider?.getStatus?.() ?? { defaultProvider: "gemini", providers: [] };
+  function sanitizeStatus(status) {
     return {
       defaultProvider: Object.hasOwn(LABELS, status.defaultProvider) ? status.defaultProvider : "gemini",
       paidCallsEnabled: status.paidCallsEnabled === true,
@@ -117,6 +116,14 @@ export function createBrainModelGateway({ aiProvider, repository, now = () => ne
     };
   }
 
+  function getStatus() {
+    return sanitizeStatus(aiProvider?.getStatus?.() ?? { defaultProvider: "gemini", providers: [] });
+  }
+
+  async function getOwnerStatus(owner) {
+    return aiProvider?.getOwnerStatus ? sanitizeStatus(await aiProvider.getOwnerStatus(owner)) : getStatus();
+  }
+
   function getPricing(provider) {
     return typeof provider === "string" && Object.hasOwn(LABELS, provider)
       ? normalizePricing(provider, configuredPricing?.[provider]) : null;
@@ -124,6 +131,7 @@ export function createBrainModelGateway({ aiProvider, repository, now = () => ne
 
   return {
     getStatus,
+    getOwnerStatus,
     getPricing,
 
     async generate(ownerId, { provider, system, prompt, schema, signal, maxOutputTokens = 8192, cacheTtlMs = MAX_CACHE_TTL_MS, cacheKey } = {}) {
@@ -139,7 +147,7 @@ export function createBrainModelGateway({ aiProvider, repository, now = () => ne
         || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TraderProviderError("TRADER_INPUT_INVALID");
       checkSignal(signal);
       const owner = String(ownerId);
-      const status = getStatus();
+      const status = await getOwnerStatus(owner);
       if (!status.paidCallsEnabled) throw new TraderProviderError("TRADER_PAID_AI_LOCKED");
       const selected = provider ?? status.defaultProvider;
       if (typeof selected !== "string" || !Object.hasOwn(LABELS, selected)) throw new TraderProviderError("TRADER_INPUT_INVALID");
@@ -179,7 +187,7 @@ export function createBrainModelGateway({ aiProvider, repository, now = () => ne
       // A stable, owner-scoped prefix key permits provider caching even when
       // short-lived exact-response caching is disabled. Dynamic data stays last.
       const prefixKey = hash(JSON.stringify({ owner, provider: selected, model: definition.model, system, schema, namespace: cacheKey ?? "" }));
-      const request = { provider: selected, system, prompt, schema, signal, maxOutputTokens, cacheKey: prefixKey };
+      const request = { ownerId: owner, provider: selected, system, prompt, schema, signal, maxOutputTokens, cacheKey: prefixKey };
       let detailed;
       try {
         detailed = await cancellable(async () => {

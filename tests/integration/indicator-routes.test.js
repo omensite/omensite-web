@@ -5,131 +5,30 @@ import { JSDOM } from "jsdom";
 import { createInMemoryIndicatorRequestRepository } from "../../src/repositories/in-memory-indicator-request-repository.js";
 import { createTestApp, loginTestOperator, readCsrfToken } from "../helpers/auth-test-helpers.js";
 
-test("Indicators page renders identity, catalog, request state, and CSRF field", async () => {
-  const agent = await loginTestOperator(createTestApp({ roles: ["OS", "Indicators"] }), { username: "omen" });
-  const response = await agent.get("/indicators").expect(200)
-    .expect(/data-indicator-access-root/)
-    .expect(/DEMO :: MARKET STRUCTURE/)
-    .expect(/NOT REQUESTED/)
-    .expect(/name="_csrf"/);
-  const dom = new JSDOM(response.text);
-
-  assert.equal(dom.window.document.querySelector("[data-indicator-identity]").textContent.trim(), "omen");
-  assert.ok(dom.window.document.querySelector("[data-indicator-role-sync] time").dateTime);
-  assert.equal(dom.window.document.querySelectorAll("[data-indicator-catalog-row]").length, 2);
-  dom.window.close();
+test("retired Indicators and alert destinations are unavailable to every signed-in role", async () => {
+  for (const roles of [["OS"], ["OS", "Indicators"], ["Admin"]]) {
+    const agent = await loginTestOperator(createTestApp({ roles }));
+    for (const route of ["/indicators", "/alerts/ict", "/alerts/support-resistance"]) {
+      await agent.get(route).expect(404);
+      await agent.get(route).set("X-Omensite-Fragment", "1").expect(404);
+    }
+    const home = await agent.get("/home").expect(200);
+    const dom = new JSDOM(home.text);
+    for (const route of ["/indicators", "/alerts/ict", "/alerts/support-resistance"]) {
+      assert.equal(dom.window.document.querySelector(`a[href="${route}"]`), null);
+    }
+    dom.window.close();
+  }
 });
 
-test("request API creates one pending all-indicator request", async () => {
-  const indicatorRequestRepository = createInMemoryIndicatorRequestRepository({
-    now: () => "2026-09-02T12:00:00.000Z",
-  });
-  const agent = await loginTestOperator(createTestApp({
-    roles: ["OS", "Indicators"], indicatorRequestRepository,
-  }), { username: "omen" });
-  const csrf = await readCsrfToken(agent, "/indicators");
-
-  await agent.post("/api/indicator-access/requests")
-    .set("X-CSRF-Token", csrf)
-    .send({ tradingViewUsername: "omen_trader", consent: true })
-    .expect(201)
-    .expect(({ body }) => {
-      assert.equal(body.ok, true);
-      assert.equal(body.request.status, "PENDING");
-      assert.equal(body.request.indicatorIds.length, 2);
-    });
-  assert.equal(indicatorRequestRepository.list().length, 1);
-});
-
-test("Indicators page and request API both require the Indicators capability", async () => {
-  const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
-
-  await os.get("/indicators").set("X-Omensite-Fragment", "1").expect(403)
-    .expect(({ body }) => assert.equal(body.error, "INSUFFICIENT_PERMISSIONS"));
-  await os.post("/api/indicator-access/requests")
-    .send({ tradingViewUsername: "member_tv", consent: true })
-    .expect(403)
-    .expect(({ body }) => assert.equal(body.error, "INSUFFICIENT_PERMISSIONS"));
-});
-
-test("request API rejects missing CSRF and safe validation failures without storing a request", async () => {
+test("the retired indicator request API cannot accept new requests or erase existing history", async () => {
   const indicatorRequestRepository = createInMemoryIndicatorRequestRepository();
-  const agent = await loginTestOperator(createTestApp({
-    roles: ["OS", "Indicators"], indicatorRequestRepository,
-  }));
-
-  await agent.post("/api/indicator-access/requests")
-    .send({ tradingViewUsername: "valid_user", consent: true })
-    .expect(403)
-    .expect(({ body }) => assert.equal(body.error, "CSRF_INVALID"));
-  const csrf = await readCsrfToken(agent, "/indicators");
-  await agent.post("/api/indicator-access/requests")
-    .set("X-CSRF-Token", csrf)
-    .send({ tradingViewUsername: "<invalid>", consent: true })
-    .expect(422)
-    .expect(({ body }) => {
-      assert.deepEqual(body, {
-        ok: false,
-        error: "TRADINGVIEW_USERNAME_INVALID",
-        message: "TRADINGVIEW USERNAME MUST BE 3–64 LETTERS, NUMBERS, UNDERSCORES, OR HYPHENS",
-      });
-    });
-  assert.equal(indicatorRequestRepository.list().length, 0);
-});
-
-test("standard form submission creates the request and redirects back to Indicators", async () => {
-  const agent = await loginTestOperator(createTestApp({ roles: ["OS", "Indicators"] }));
-  const csrf = await readCsrfToken(agent, "/indicators");
-
-  await agent.post("/api/indicator-access/requests")
-    .type("form")
-    .send({ _csrf: csrf, tradingViewUsername: "operator_tv", consent: "true" })
-    .expect(303)
-    .expect("Location", "/indicators");
-  await agent.get("/indicators").expect(200).expect(/PENDING/).expect(/value="operator_tv"/);
-});
-
-test("TradingView links render only for granted requests with configured URLs", async () => {
-  const indicatorRequestRepository = createInMemoryIndicatorRequestRepository();
-  const indicatorCatalog = Object.freeze([
-    Object.freeze({
-      id: "private-one", name: "PRIVATE ONE", description: "Configured script",
-      tradingViewUrl: "https://www.tradingview.com/script/example/", version: "1.0.0", active: true, discord: false,
-    }),
-    Object.freeze({
-      id: "private-two", name: "PRIVATE TWO", description: "Configured without a URL",
-      tradingViewUrl: null, version: "1.0.0", active: true, discord: false,
-    }),
-    Object.freeze({
-      id: "unsafe-script", name: "UNSAFE SCRIPT", description: "Injected unsafe scheme",
-      tradingViewUrl: "javascript:alert(1)", version: "1.0.0", active: true, discord: false,
-    }),
-    Object.freeze({
-      id: "external-script", name: "EXTERNAL SCRIPT", description: "Injected unrelated host",
-      tradingViewUrl: "https://example.com/script/not-tradingview/", version: "1.0.0", active: true, discord: false,
-    }),
-  ]);
-  const app = createTestApp({
-    roles: ["OS", "Indicators"], indicatorRequestRepository, indicatorCatalog,
-  });
-  const agent = await loginTestOperator(app, { username: "omen" });
-  indicatorRequestRepository.upsertPending({
-    userId: "discord:omen", discordUsername: "omen", tradingViewUsername: "omen_tv",
-    indicatorIds: ["private-one", "private-two", "unsafe-script", "external-script"],
-  });
-
-  let response = await agent.get("/indicators").expect(200);
-  assert.doesNotMatch(response.text, /href="https:\/\/www\.tradingview\.com\/script\/example\//);
-  indicatorRequestRepository.decide({ userId: "discord:omen", status: "GRANTED", actorId: "admin" });
-  response = await agent.get("/indicators").expect(200);
-  assert.match(response.text, /href="https:\/\/www\.tradingview\.com\/script\/example\/"/);
-  assert.equal((response.text.match(/OPEN IN TRADINGVIEW/g) ?? []).length, 1);
-  assert.doesNotMatch(response.text, /href="javascript:/i);
-  assert.doesNotMatch(response.text, /href="https:\/\/example\.com/i);
-});
-
-test("unauthenticated indicator request API is rejected before request processing", async () => {
-  await request(createTestApp()).post("/api/indicator-access/requests")
-    .send({ tradingViewUsername: "valid_user", consent: true })
-    .expect(401);
+  indicatorRequestRepository.upsertPending({ userId: "discord:historical", discordUsername: "historical", tradingViewUsername: "saved_operator", indicatorIds: ["demo-market-structure"] });
+  const before = structuredClone(indicatorRequestRepository.list());
+  const app = createTestApp({ indicatorRequestRepository });
+  const agent = await loginTestOperator(app);
+  const csrf = await readCsrfToken(agent, "/home");
+  await agent.post("/api/indicator-access/requests").set("X-CSRF-Token", csrf).send({ tradingViewUsername: "new_operator", consent: true }).expect(404);
+  assert.deepEqual(indicatorRequestRepository.list(), before);
+  await request(app).post("/api/indicator-access/requests").send({ tradingViewUsername: "new_operator", consent: true }).expect(401);
 });

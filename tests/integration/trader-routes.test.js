@@ -24,14 +24,16 @@ test("trader page and API require authentication", async () => {
   await request(app).post("/api/trader/runs").send(demo).expect(401);
 });
 
-test("base members can open full and fragment trader pages with all providers", async () => {
+test("the former trader page redirects to the unified Research workspace and its API retains all providers", async () => {
   const client = await loginTestOperator(makeApp({ roles: ["OS"] }));
-  const full = await client.get("/trader").expect(200);
+  await client.get("/trader").expect(302).expect("Location", "/research");
+  const full = await client.get("/research").expect(200);
   assert.match(full.text, /data-app-shell/);
-  assert.match(full.text, /data-trader/);
+  assert.match(full.text, /data-brain-form/);
   assert.match(full.text, /\/css\/trader.css/);
-  const fragment = await client.get("/trader").set("X-Omensite-Fragment", "1")
-    .expect(200).expect("X-Omensite-Key", "trader").expect("X-Omensite-Path", "/trader");
+  await client.get("/trader").set("X-Omensite-Fragment", "1").expect(302).expect("Location", "/research");
+  const fragment = await client.get("/research").set("X-Omensite-Fragment", "1")
+    .expect(200).expect("X-Omensite-Key", "research").expect("X-Omensite-Path", "/research");
   assert.doesNotMatch(fragment.text, /data-app-shell/);
   const state = await client.get("/api/trader/state").expect(200).expect("Cache-Control", "no-store");
   assert.equal(state.body.defaultProvider, "gemini");
@@ -44,7 +46,7 @@ test("demo analysis is CSRF protected, recorded, and isolated between operators"
   const first = await loginTestOperator(app, { username: "first-trader" });
   const second = await loginTestOperator(app, { username: "second-trader" });
   await first.post("/api/trader/runs").send(demo).expect(403);
-  const csrf = await readCsrfToken(first, "/trader");
+  const csrf = await readCsrfToken(first, "/research");
   const result = await first.post("/api/trader/runs").set("X-CSRF-Token", csrf)
     .send(demo).expect(201).expect("Cache-Control", "no-store");
   assert.equal(result.body.run.mode, "demo");
@@ -60,7 +62,7 @@ test("demo analysis is CSRF protected, recorded, and isolated between operators"
 
 test("invalid risk and unconfigured analysis fail with structured errors", async () => {
   const client = await loginTestOperator(makeApp());
-  const csrf = await readCsrfToken(client, "/trader");
+  const csrf = await readCsrfToken(client, "/research");
   const invalid = await client.post("/api/trader/runs").set("X-CSRF-Token", csrf)
     .send({ ...demo, riskPercent: -1 }).expect(422);
   assert.equal(invalid.body.error, "TRADER_INPUT_INVALID");
@@ -77,7 +79,7 @@ test("unexpected errors and provider payloads never reach the client or logs", a
     run: async () => { throw new Error("Bearer private-credential upstream-body"); },
   };
   const client = await loginTestOperator(makeApp({ traderService: service, logger: { error: (text) => logs.push(text) } }));
-  const csrf = await readCsrfToken(client, "/trader");
+  const csrf = await readCsrfToken(client, "/research");
   const response = await client.post("/api/trader/runs").set("X-CSRF-Token", csrf).send(demo).expect(500);
   assert.deepEqual(response.body, { error: "TRADER_UNAVAILABLE", message: "Analysis is unavailable. Try again." });
   assert.doesNotMatch(JSON.stringify(logs), /private-credential|upstream-body/);

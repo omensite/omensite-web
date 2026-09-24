@@ -9,7 +9,7 @@ test("Admin can open every module while OS receives structured 403 responses for
   const admin = await loginTestOperator(createTestApp({ roles: ["Admin"] }), { username: "admin" });
   const os = await loginTestOperator(createTestApp({ roles: ["OS"] }), { username: "member" });
 
-  for (const path of ["/indicators", "/journal", "/admin"]) {
+  for (const path of ["/journal", "/admin"]) {
     await admin.get(path).expect(200);
     await os.get(path).set("X-Omensite-Fragment", "1").expect(403).expect(({ body }) => {
       assert.deepEqual(body, { error: "INSUFFICIENT_PERMISSIONS", message: DENIED_MESSAGE });
@@ -32,8 +32,8 @@ test("all primary module links remain visible to OS users with capability diagno
   const response = await os.get("/home").expect(200);
 
   for (const [path, capability] of [
-    ["/home", "base"], ["/indicators", "indicators"], ["/market-news", "base"],
-    ["/alerts/ict", "base"], ["/alerts/support-resistance", "base"], ["/journal", "journal"], ["/admin", "admin"],
+    ["/home", "base"], ["/brain", "base"], ["/research", "base"],
+    ["/accounts", "base"], ["/journal", "journal"], ["/settings", "base"],
   ]) {
     assert.match(response.text, new RegExp(`href="${path}"[^>]*data-required-capability="${capability}"`));
   }

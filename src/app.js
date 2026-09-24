@@ -21,7 +21,6 @@ import { createAuthRoutes } from "./routes/auth-routes.js";
 import { createAdminRoutes } from "./routes/admin-routes.js";
 import { createPageRoutes } from "./routes/page-routes.js";
 import { createJournalRoutes } from "./routes/journal-routes.js";
-import { createIndicatorRoutes } from "./routes/indicator-routes.js";
 import { createMarketNewsService } from "./services/market-news-service.js";
 import { createEconomiciumCalendarProvider } from "./providers/economicium-calendar-provider.js";
 import { CAPABILITIES, LOGIN_ERROR_MESSAGES, MAX_ROLE_SNAPSHOT_AGE_MS } from "./models/access.js";
@@ -38,6 +37,10 @@ import { createBrainRoutes } from "./routes/brain-routes.js";
 import { createRobinhoodService } from "./brokers/robinhood-service.js";
 import { createRobinhoodRoutes } from "./routes/robinhood-routes.js";
 import { createAssetManifest } from "./runtime/asset-manifest.js";
+import { createMemoryWorkspaceRepository } from "./settings/workspace-repository.js";
+import { createWorkspaceSettingsService } from "./settings/workspace-settings-service.js";
+import { createWorkspaceAIProvider } from "./providers/workspace-ai-provider.js";
+import { createSettingsRoutes } from "./routes/settings-routes.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const publicDirectory = path.join(sourceDirectory, "..", "public");
@@ -73,6 +76,9 @@ export function createApp({
   brainEvaluator,
   robinhoodService,
   brokerRepository,
+  workspaceRepository = createMemoryWorkspaceRepository(),
+  workspaceSettingsService,
+  integrationsEncryptionKey,
   readinessCheck = async () => true,
   configureRoutes,
   logger = console,
@@ -121,7 +127,14 @@ export function createApp({
     assertOperatorAdmission: (operator) => resolvedAuthService.assertOperatorAdmission?.(operator),
   });
 
-  const resolvedAIProvider = traderAIProvider ?? createTraderAIProvider();
+  const baseAIProvider = traderAIProvider ?? createTraderAIProvider();
+  const credentialSecret = [integrationsEncryptionKey, process.env.INTEGRATIONS_ENCRYPTION_KEY, secret]
+    .find((value) => typeof value === "string" && value.trim());
+  const resolvedSettingsService = workspaceSettingsService ?? createWorkspaceSettingsService({
+    repository: workspaceRepository, aiProvider: baseAIProvider,
+    encryptionSecret: credentialSecret,
+  });
+  const resolvedAIProvider = createWorkspaceAIProvider({ settingsService: resolvedSettingsService, fallbackProvider: baseAIProvider });
   const resolvedRobinhoodService = robinhoodService ?? createRobinhoodService({ repository: brokerRepository });
   const resolvedBrainKnowledge = brainKnowledge ?? createBrainKnowledge({ repository: brainRepository });
   const resolvedBrainGateway = brainModelGateway ?? createBrainModelGateway({ aiProvider: resolvedAIProvider, repository: brainRepository });
@@ -165,10 +178,12 @@ export function createApp({
   app.locals.brainKnowledge = resolvedBrainKnowledge;
   app.locals.brainTools = resolvedBrainTools;
   app.locals.robinhoodService = resolvedRobinhoodService;
+  app.locals.workspaceSettingsService = resolvedSettingsService;
+  app.locals.workspaceRepository = workspaceRepository;
   app.set("trust proxy", trustProxy ?? (environment === "production" ? 1 : false));
   app.set("view engine", "ejs");
   app.set("views", path.join(sourceDirectory, "..", "views"));
-  app.use(["/brain", "/api/brain", "/api/robinhood", "/auth/robinhood"], (req, res, next) => {
+  app.use(["/brain", "/research", "/settings", "/accounts", "/api/settings", "/api/brain", "/api/robinhood", "/auth/robinhood"], (req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
@@ -183,8 +198,10 @@ export function createApp({
     store: resolvedSessionStore,
     secret: secret ?? "omensite-local-development-secret",
     resave: false,
+    rolling: true,
     saveUninitialized: false,
     cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
       httpOnly: true,
       sameSite: "lax",
       secure: environment === "production",
@@ -251,7 +268,7 @@ export function createApp({
   });
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));
   app.use(createRobinhoodRoutes({ robinhoodService: resolvedRobinhoodService }));
-  app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
+  app.use(createSettingsRoutes({ settingsService: resolvedSettingsService, logger }));
   app.use(createPageRoutes({ marketNewsService, logger }));
   app.use(createTraderRoutes({
     traderService: traderService ?? createTraderService({

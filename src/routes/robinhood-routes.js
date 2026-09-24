@@ -27,14 +27,14 @@ export function createRobinhoodRoutes({ robinhoodService }) {
     const pending = req.session.robinhoodOAuth;
     const state = typeof req.query.state === "string" ? req.query.state : "";
     if (!pending || typeof pending.state !== "string" || Buffer.byteLength(state) !== Buffer.byteLength(pending.state)
-      || !timingSafeEqual(Buffer.from(state), Buffer.from(pending.state))) return res.redirect("/brain?robinhood=invalid_state");
+      || !timingSafeEqual(Buffer.from(state), Buffer.from(pending.state))) return res.redirect("/settings?section=connections&robinhood=invalid_state");
     delete req.session.robinhoodOAuth;
     try {
       await new Promise((resolve, reject) => req.session.save((error) => error ? reject(error) : resolve()));
-      if (req.query.error) return res.redirect("/brain?robinhood=cancelled");
+      if (req.query.error) return res.redirect("/settings?section=connections&robinhood=cancelled");
       await robinhoodService.complete(req.session.operator.id, pending, req.query.code);
-      return res.redirect("/brain?robinhood=connected");
-    } catch { return res.redirect("/brain?robinhood=connection_failed"); }
+      return res.redirect("/settings?section=connections&robinhood=connected");
+    } catch { return res.redirect("/settings?section=connections&robinhood=connection_failed"); }
   });
   router.post("/api/robinhood/disconnect", requireCsrf, handle(async (req, res, owner) => { await robinhoodService.disconnect(owner); res.json({ ok: true }); }));
   router.post("/api/robinhood/pause", requireCsrf, handle(async (req, res, owner) => { await robinhoodService.pause(owner, req.body?.paused); res.json({ ok: true }); }));

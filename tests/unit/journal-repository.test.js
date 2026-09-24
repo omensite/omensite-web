@@ -112,7 +112,7 @@ test("repository keeps a session copy when persistent writes fail", () => {
 });
 
 test("app shell remains usable when localStorage access throws", () => {
-  const dom = new JSDOM('<main data-main><section data-route-view data-route-key="journal"><div data-journal-list></div></section></main>', { url: "http://localhost/journal" });
+  const dom = new JSDOM('<main data-app-shell data-main><section data-route-view data-route-key="journal"><div data-journal-list></div></section></main>', { url: "http://localhost/journal" });
   const windowRef = {
     location: dom.window.location,
     history: dom.window.history,

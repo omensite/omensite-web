@@ -52,19 +52,22 @@ test("new journal page saves selected form values and navigates through the shar
   assert.deepEqual(destinations, ["/journal/entry-7"]);
 });
 
-test("new journal page exposes the draft toast and direction state", () => {
+test("new journal page saves the chosen direction to persistent draft storage", async (t) => {
   const dom = newEntryDocument();
   const root = dom.window.document.querySelector("[data-route-key]");
-  initializeJournalPage(root, { create() {}, navigate() {} });
+  const saved = [];
+  const instance = initializeJournalPage(root, { create() {}, navigate() {}, async saveDraft(fields) { saved.push(structuredClone(fields)); } });
+  t.after(() => { instance?.dispose(); dom.window.close(); });
 
   root.querySelector('[data-journal-direction="short"]').click();
   root.querySelector("[data-journal-save-draft]").click();
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.ok(root.querySelector('[data-journal-direction="short"]').classList.contains("on-short"));
   assert.equal(root.querySelector('[data-journal-direction="short"]').getAttribute("aria-pressed"), "true");
   assert.equal(root.querySelector('[data-journal-direction="long"]').getAttribute("aria-pressed"), "false");
-  assert.match(root.querySelector("[data-toast]").textContent, /DRAFT HELD IN SESSION/);
-  assert.equal(root.querySelector("[data-toast]").hidden, false);
+  assert.equal(saved.at(-1).direction, "short");
+  assert.match(root.querySelector(".workspace-save-state").textContent, /Draft saved to your account/);
 });
 
 test("selected confluences can be removed and returned to the available controls", () => {
@@ -86,8 +89,8 @@ test("journal toasts auto-dismiss after 2.4 seconds", () => {
   let delay;
   let dismiss;
   dom.window.setTimeout = (callback, milliseconds) => { delay = milliseconds; dismiss = callback; return 1; };
-  initializeJournalPage(root, { create() {}, navigate() {} });
-  root.querySelector("[data-journal-save-draft]").click();
+  initializeJournalPage(root, { create(input) { return { ...input, id: "entry-toast" }; }, navigate() {} });
+  root.querySelector("form").dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
   assert.equal(delay, 2400);
   assert.equal(root.querySelector("[data-toast]").hidden, false);
   dismiss();

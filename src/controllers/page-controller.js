@@ -2,7 +2,7 @@ import { buildPageViewModel } from "../models/view-models.js";
 
 export function renderPage(req, res, page) {
   res.set({
-    "X-Omensite-Path": page.data.path ?? page.route.path,
+    "X-Omensite-Path": page.data.path ?? req.originalUrl ?? page.route.path,
     "X-Omensite-Title": page.route.title,
     "X-Omensite-Key": page.route.key,
   });

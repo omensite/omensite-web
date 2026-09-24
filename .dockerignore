@@ -11,3 +11,16 @@ data
 Dockerfile*
 compose*.yml
 README.md
+
+# Local design/agent tooling and private project recall are not application assets.
+.omensite
+.agents
+.codex
+.claude
+.mcp.json
+AGENTS.md
+CLAUDE.md
+evals
+knowledge
+output
+tests/redline-cortex.zip

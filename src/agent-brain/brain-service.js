@@ -540,7 +540,7 @@ export function createBrainService({ repository, knowledge, modelGateway, tools,
     async getState(owner) {
       const key = ownerKey(owner);
       const runs = await recover(key, await repository.listRuns(key, { limit: 100 }));
-      const status = modelGateway.getStatus();
+      const status = modelGateway.getOwnerStatus ? await modelGateway.getOwnerStatus(key) : modelGateway.getStatus();
       return { ...status, paidCallsEnabled: status.paidCallsEnabled === true,
         providers: (status.providers ?? []).map((provider) => ({ ...provider, pricingConfigured: Boolean(modelGateway.getPricing?.(provider.id)) })),
         storage: repository.getStorageStatus?.() ?? { kind: "unknown", persistent: false },
@@ -559,7 +559,8 @@ export function createBrainService({ repository, knowledge, modelGateway, tools,
       if (active.size + starting.size >= 4) throw problem("BRAIN_BUSY", 503, "Four research workflows are already active. Try again shortly.");
       starting.add(key);
       try {
-        const input = normalizeInput(rawInput, modelGateway);
+        const status = modelGateway.getOwnerStatus ? await modelGateway.getOwnerStatus(key) : modelGateway.getStatus();
+        const input = normalizeInput(rawInput, { ...modelGateway, getStatus: () => status });
         const existing = await recover(key, await repository.listRuns(key, { limit: 100 }));
         if (existing.some((run) => ["running", "awaiting_approval", "approving"].includes(run.status))) throw problem("BRAIN_RUN_IN_PROGRESS", 409, "Finish, reject or cancel the existing research checkpoint before starting another run.");
         const createdAt = now().toISOString();

@@ -1,30 +1,11 @@
-<section class="route cortex-home" data-route-view data-route-key="<%= page.route.key %>">
-  <%- include("../partials/route-head", { page }) %>
+<section class="route workspace-overview" data-route-view data-route-key="<%= page.route.key %>">
   <% if (page.accessNotice) { %><output class="toast" data-access-notice><%= page.accessNotice %></output><% } %>
-  <div class="cortex-kpis" aria-label="Workspace overview">
-    <article class="cortex-kpi"><span>JOURNAL ENTRIES</span><strong data-journal-count>—</strong><small>Saved trade records</small></article>
-    <article class="cortex-kpi"><span>EXECUTION VENUE</span><strong class="cortex-kpi-word">Robinhood</strong><small>Stocks · options · crypto</small></article>
-    <article class="cortex-kpi"><span>ALERT ENGINE</span><strong class="cortex-kpi-word">Standby</strong><small>Rule automation is not connected</small></article>
-    <article class="cortex-kpi"><span>WORKSPACE UPTIME</span><strong data-uptime-min>0m</strong><small>Since this terminal opened</small></article>
-  </div>
-  <section class="cortex-panel cortex-home-command" aria-labelledby="home-command-title">
-    <header class="cortex-panel-head"><h2 id="home-command-title">COMMAND CENTER</h2><span>HUMAN REVIEW REQUIRED</span></header>
-    <div class="cortex-panel-body cortex-page-intro">
-      <div><span class="cortex-eyebrow">INTELLIGENCE → EVIDENCE → DECISION</span><h2>Your next decision starts here.</h2><p>Connect market evidence, direct a research mission, and review the outcome. Brain brings your agents, memory, and Robinhood workspace together.</p></div>
-      <div class="cortex-command-actions"><a class="btn btn-solid" href="/brain" data-nav-link>Open Brain <span aria-hidden="true">↗</span></a><a class="btn" href="/brain?view=robinhood" data-nav-link>Open Robinhood</a></div>
-    </div>
-  </section>
-  <div class="cortex-section-heading"><h2>WORKSPACES</h2><span>CHOOSE YOUR NEXT STEP</span></div>
-  <nav class="cortex-workspace-grid" aria-label="Trading workspaces">
-    <a class="cortex-workspace-card" href="/brain" data-nav-link><span class="cortex-workspace-index">01 / INTELLIGENCE</span><h3>Agent Brain <span aria-hidden="true">↗</span></h3><p>Plan, research, verify, and retain reviewed knowledge with your agent team.</p><span class="cortex-workspace-meta">MISSIONS · MEMORY · EVALUATIONS</span></a>
-    <a class="cortex-workspace-card" href="/brain?view=robinhood" data-nav-link><span class="cortex-workspace-index">02 / BROKER</span><h3>Robinhood <span aria-hidden="true">↗</span></h3><p>Connect your account, retrieve broker data, and prepare exact requests for review.</p><span class="cortex-workspace-meta">STOCKS · OPTIONS · CRYPTO</span></a>
-    <a class="cortex-workspace-card" href="/trader" data-nav-link><span class="cortex-workspace-index">03 / RESEARCH</span><h3>Trade analysis <span aria-hidden="true">↗</span></h3><p>Turn dated market context into a thesis with independent risk checks.</p><span class="cortex-workspace-meta">GEMINI · OPENAI · CLAUDE</span></a>
-    <a class="cortex-workspace-card" href="/journal" data-nav-link><span class="cortex-workspace-index">04 / REVIEW</span><h3>Trade journal <span aria-hidden="true">↗</span></h3><p>Record execution, confluences, and lessons to review your decisions over time.</p><span class="cortex-workspace-meta">ENTRIES · EVIDENCE · LESSONS</span></a>
-    <a class="cortex-workspace-card" href="/market-news" data-nav-link><span class="cortex-workspace-index">05 / CALENDAR</span><h3>Market events <span aria-hidden="true">↗</span></h3><p>Follow scheduled releases and filter the week by market and impact.</p><span class="cortex-workspace-meta">ECONOMIC CALENDAR</span></a>
-    <a class="cortex-workspace-card" href="/indicators" data-nav-link><span class="cortex-workspace-index">06 / CHARTS</span><h3>Indicator access <span aria-hidden="true">↗</span></h3><p>View the script catalog and request TradingView access from an author.</p><span class="cortex-workspace-meta">CATALOG · ACCESS REQUESTS</span></a>
-  </nav>
-  <section class="cortex-panel" aria-labelledby="home-signals-title">
-    <header class="cortex-panel-head"><h2 id="home-signals-title">SIGNAL WORKSPACES</h2><span>STANDBY</span></header>
-    <div class="cortex-panel-body cortex-signal-links"><p>Alert workspaces are available for planning. No automated rules or live triggers are running.</p><a class="btn" href="/alerts/ict" data-nav-link>Inspect ICT alerts</a><a class="btn" href="/alerts/support-resistance" data-nav-link>Inspect price levels</a></div>
-  </section>
+  <header class="workspace-welcome"><span class="cortex-eyebrow">YOUR TRADING WORKSPACE</span><h1>Make your next move<br>an informed one.</h1><p>Connect your accounts, give your agents a research objective, and review the evidence before acting.</p><div class="workspace-actions"><a class="btn btn-solid" href="/research" data-nav-link>Start research ↗</a><a class="btn" href="/brain" data-nav-link>Explore the brain</a></div></header>
+  <div class="workspace-section-title"><h2>Ready when you are</h2><span data-overview-status>Checking your setup…</span></div>
+  <ol class="setup-steps">
+    <li><span>01</span><div><h3>Connect your tools</h3><p>Save Gemini, OpenAI, or Claude credentials and connect Robinhood in one place.</p><small data-overview-providers>Checking providers…</small></div><a class="btn" href="/settings" data-nav-link>Open setup ↗</a></li>
+    <li><span>02</span><div><h3>Build your research</h3><p>Add a playbook, supply market context, and let the agents plan, research, and challenge a thesis.</p><small data-overview-research>Checking saved research…</small></div><a class="btn" href="/research" data-nav-link>Research ↗</a></li>
+    <li><span>03</span><div><h3>Review & act</h3><p>Inspect the exact broker request before approving it. Record the outcome in your journal.</p><small data-overview-broker>Checking account connection…</small></div><a class="btn" href="/accounts" data-nav-link>Accounts ↗</a></li>
+  </ol>
+  <div class="workspace-overview-foot"><p data-overview-lock>Exploring the workspace uses no AI tokens.</p><a href="/journal" data-nav-link>Open your journal ↗</a></div>
 </section>

@@ -286,8 +286,7 @@ export function createTraderService({
   const running = new Set();
   const recentAnalyses = new Map();
 
-  function providerStatus() {
-    const status = aiProvider?.getStatus?.() ?? { defaultProvider: "gemini", providers: [] };
+  function providerStatus(status = aiProvider?.getStatus?.() ?? { defaultProvider: "gemini", providers: [] }) {
     return {
       defaultProvider: PROVIDERS.has(status.defaultProvider) ? status.defaultProvider : "gemini",
       paidCallsEnabled: status.paidCallsEnabled === true,
@@ -320,9 +319,9 @@ export function createTraderService({
     }
   }
 
-  async function generate(provider, prompt, schema, system = SYSTEM) {
+  async function generate(ownerId, provider, prompt, schema, system = SYSTEM) {
     try {
-      return await timed((signal) => aiProvider.generate({ provider, system, prompt, schema, signal }), generationTimeoutMs,
+      return await timed((signal) => aiProvider.generate({ ownerId, provider, system, prompt, schema, signal }), generationTimeoutMs,
         () => failure("TRADER_PROVIDER_TIMEOUT", 504, "The AI provider timed out. Try again."));
     } catch (error) {
       throw safeProviderFailure(error);
@@ -339,13 +338,17 @@ export function createTraderService({
         history.touchedAt = now().valueOf();
         histories.set(key, history);
       }
-      return structuredClone({ ...providerStatus(), runs: history?.runs ?? [] });
+      const state = (status) => structuredClone({ ...providerStatus(status), runs: history?.runs ?? [] });
+      return aiProvider?.getOwnerStatus ? aiProvider.getOwnerStatus(key).then(state) : state();
     },
 
     async run(operatorId, rawInput) {
       const key = operatorKey(operatorId);
       if (running.has(key)) throw failure("TRADER_RUN_IN_PROGRESS", 409, "An analysis is already running for this account.");
-      const status = providerStatus();
+      const status = providerStatus(aiProvider?.getOwnerStatus ? await aiProvider.getOwnerStatus(key) : undefined);
+      // Owner settings may require a database read. Recheck after that await so
+      // concurrent requests cannot both enter the same operator's analysis.
+      if (running.has(key)) throw failure("TRADER_RUN_IN_PROGRESS", 409, "An analysis is already running for this account.");
       const input = normalizeInput(rawInput, status.defaultProvider);
       if (input.mode === "analysis" && !status.paidCallsEnabled) {
         throw failure("TRADER_PAID_AI_LOCKED", 423, "Paid AI calls are locked. Offline demos and evaluations remain available.");
@@ -375,7 +378,7 @@ export function createTraderService({
           evidence: ["DEMO: fixed entry 100, stop 98, target 106 illustrate a 3:1 reward/risk calculation.", "DEMO: the selected account size, risk percent, and point value determine whole-unit sizing."],
           missingData: [], entry: 100, stop: 98, target: 106,
           invalidation: "DEMO: the hypothetical thesis is invalidated at 98; no real market setup is implied.",
-        } : validateThesis(await generate(input.provider, JSON.stringify({
+        } : validateThesis(await generate(key, input.provider, JSON.stringify({
           task: "Develop an evidence-based top-down trading thesis from this manually supplied snapshot. Missing or uncertain material evidence requires waiting.",
           asOfUtc, sessionTimeZone: "America/New_York",
           symbol: input.symbol, timeframe: input.timeframe, marketContext: input.context,
@@ -391,7 +394,7 @@ export function createTraderService({
           review = { verdict: "pass", reason: "DEMO: the fixed illustrative plan passes arithmetic checks. No AI review or market-data verification was performed." };
         } else if (risk.passed) {
           try {
-            review = validateReview(await generate(input.provider, JSON.stringify({
+            review = validateReview(await generate(key, input.provider, JSON.stringify({
               task: "Independently critique this proposed research plan. Check that every claimed observation and price is supported by the original manual snapshot, direction and higher-timeframe evidence are coherent, and no material evidence is missing. Return wait for unsupported claims, insufficient context, or event risk; pass only if the research hypothesis is sufficiently supported. A pass never authorizes an order.",
               asOfUtc, sessionTimeZone: "America/New_York",
               originalSnapshot: { symbol: input.symbol, timeframe: input.timeframe, marketContext: input.context },

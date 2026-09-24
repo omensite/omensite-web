@@ -5,13 +5,12 @@
   <div class="cortex-kpis" aria-label="Administration overview">
     <article class="cortex-kpi"><span>MEMBER IDENTITIES</span><strong><%= page.data.users.length %></strong><small>Recorded Discord members</small></article>
     <article class="cortex-kpi"><span>ACTIVE SESSIONS</span><strong><%= page.data.users.reduce((sum, user) => sum + Number(user.activeSessions || 0), 0) %></strong><small>Snapshot at page load</small></article>
-    <article class="cortex-kpi"><span>PENDING REQUESTS</span><strong><%= page.data.requests.filter((request) => request.status === "PENDING").length %></strong><small>Snapshot at page load</small></article>
   </div>
 
   <div class="admin-memory-warning" data-storage-state="<%= page.data.storage?.persistent ? 'persistent' : 'temporary' %>" role="status">
     <% if (page.data.storage?.persistent) { %>
-      <strong>POSTGRESQL CONNECTED</strong>
-      <span>Member records, access decisions, bans, and sessions are saved in the database.</span>
+      <strong><%= page.data.storage.kind === "postgres" ? "POSTGRESQL CONNECTED" : "PERSISTENT SQLITE STORAGE" %></strong>
+      <span>Member records, bans, and sessions are saved in the database.</span>
     <% } else { %>
       <strong>WARN · TEMPORARY MEMORY MODE</strong>
       <span>Administrative records may reset when this process restarts.</span>
@@ -79,57 +78,6 @@
         </li>
       <% } %>
     </ol>
-  </section>
-
-  <section class="admin-rail cortex-panel" aria-labelledby="admin-requests-heading" data-admin-requests>
-    <div class="admin-rail-head cortex-panel-head">
-      <h2 id="admin-requests-heading">INDICATOR REQUESTS</h2>
-      <span>MANUAL TRADINGVIEW ACCESS</span>
-    </div>
-    <div class="admin-request-head" aria-hidden="true">
-      <span>MEMBER</span><span>REQUEST</span><span>STATE</span><span>DECISION</span>
-    </div>
-    <ol class="admin-records">
-      <% for (const request of page.data.requests) { %>
-        <li class="admin-request-row" data-admin-request-row data-user-id="<%= request.userId %>"
-          data-request-status="<%= request.status %>">
-          <div data-field="MEMBER"><strong>@<%= request.discordUsername %></strong><span><%= request.userId %></span></div>
-          <div data-field="REQUEST">
-            <span>TV :: <strong><%= request.tradingViewUsername %></strong></span>
-            <span>
-              <% for (const indicator of request.indicators) { %>
-                <% if (indicator.tradingViewUrl) { %>
-                  <a href="<%= indicator.tradingViewUrl %>" target="_blank" rel="noopener noreferrer"><%= indicator.name %></a>
-                <% } else { %>
-                  <span><%= indicator.name %></span>
-                <% } %>
-              <% } %>
-            </span>
-            <time datetime="<%= request.requestedAt %>"><%= request.requestedAt %></time>
-            <span data-admin-decided-by <%= request.decidedBy ? "" : "hidden" %>>DECIDED BY :: <span data-admin-decided-by-value><%= request.decidedBy ?? "" %></span></span>
-            <span data-admin-decided-at <%= request.decidedAt ? "" : "hidden" %>>DECIDED AT :: <time datetime="<%= request.decidedAt ?? "" %>"><%= request.decidedAt ?? "" %></time></span>
-          </div>
-          <output class="admin-request-state indicator-state-<%= request.status.toLowerCase() %>" data-field="STATE" data-admin-request-status><%= request.status %></output>
-          <% if (request.status === "PENDING") { %>
-            <div class="admin-actions" data-field="DECISION" data-admin-decision-controls>
-              <% for (const status of ["GRANTED", "DENIED"]) { %>
-                <form action="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision" method="post">
-                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                  <input type="hidden" name="status" value="<%= status %>">
-                  <button class="btn <%= status === "DENIED" ? "btn-danger" : "" %>" type="submit"
-                    data-admin-action="decision" data-admin-decision="<%= status %>"
-                    data-admin-action-endpoint="/api/admin/indicator-requests/<%= encodeURIComponent(request.userId) %>/decision"
-                    data-admin-confirm="MARK THIS REQUEST <%= status %>?">Mark <%= status.toLowerCase() %></button>
-                </form>
-              <% } %>
-            </div>
-          <% } else { %>
-            <div class="admin-actions" data-field="DECISION"><span>DECISION RECORDED</span></div>
-          <% } %>
-        </li>
-      <% } %>
-    </ol>
-    <% if (!page.data.requests.length) { %><div class="cortex-empty-state cortex-empty-compact"><h3>No indicator requests</h3><p>Member access requests will appear here for review.</p></div><% } %>
   </section>
 
   <output class="admin-feedback" data-admin-feedback aria-live="polite"></output>

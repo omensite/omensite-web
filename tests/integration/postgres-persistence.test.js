@@ -20,13 +20,13 @@ test("PostgreSQL retains application records, admission policy, and session revo
   const staleSid = `stale-${randomUUID()}`;
   const expiredSid = `expired-${randomUUID()}`;
   const provider = {
-    getStatus: () => ({ defaultProvider: "gemini", paidCallsEnabled: false, providers: [] }),
+    getStatus: () => ({ defaultProvider: "gemini", paidCallsEnabled: false, providers: [{ id: "gemini", model: "gemini-test", configured: false }] }),
     generate: () => { throw new Error("Persistence verification must not call a model"); },
   };
   let runtime = createPostgresRuntime(config);
   const apps = [];
   const makeApp = () => {
-    const app = createTestApp({ ...runtime, traderAIProvider: provider, logger: { error() {} } });
+    const app = createTestApp({ ...runtime, integrationsEncryptionKey: "postgres-workspace-fixture-encryption-key", traderAIProvider: provider, logger: { error() {} } });
     apps.push(app);
     return app;
   };
@@ -37,7 +37,7 @@ test("PostgreSQL retains application records, admission policy, and session revo
     for (const table of ["app_users", "app_bans", "indicator_requests"]) {
       await runtime.pool.query(`DELETE FROM ${table} WHERE user_id=ANY($1::text[])`, [[ownerId, memberId]]);
     }
-    for (const table of ["journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "broker_workspaces"]) {
+    for (const table of ["journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "broker_workspaces", "user_workspaces"]) {
       await runtime.pool.query(`DELETE FROM ${table} WHERE owner_id=ANY($1::text[])`, [[ownerId, memberId]]);
     }
     await runtime.close();
@@ -55,6 +55,10 @@ test("PostgreSQL retains application records, admission policy, and session revo
   assert.equal(await runtime.sessionRegistry.activeCount(ownerId), 1);
 
   const csrf = await readCsrfToken(agent, "/brain");
+  const fixtureKey = "postgres-persistence-fixture-provider-key";
+  await agent.put("/api/settings/providers/gemini").set("X-CSRF-Token", csrf).send({ apiKey: fixtureKey }).expect(200);
+  await agent.put("/api/settings/drafts/research").set("X-CSRF-Token", csrf).send({ fields: { context: "Retain this unfinished research across restart" } }).expect(200);
+  assert.equal(JSON.stringify(await runtime.workspaceRepository.read(ownerId)).includes(fixtureKey), false);
   const document = await agent.post("/api/brain/documents").set("X-CSRF-Token", csrf)
     .send({ title: "Persistence check", text: "Test fixture, not trading guidance.", kind: "knowledge" }).expect(201);
   const documentId = document.body.document.id;
@@ -119,6 +123,13 @@ test("PostgreSQL retains application records, admission policy, and session revo
   assert.ok(state.body.documents.some((item) => item.id === documentId));
   assert.ok(state.body.runs.some((item) => item.id === run.id));
   assert.equal(state.body.paidCallsEnabled, false);
+  assert.equal(state.body.providers[0].configured, true);
+  const settings = await resumed.get("/api/settings").set("Cookie", cookie).expect(200);
+  assert.equal(settings.body.storage.kind, "postgres");
+  assert.equal(settings.body.drafts.research.fields.context, "Retain this unfinished research across restart");
+  assert.equal(settings.body.providers[0].source, "account");
+  assert.equal(settings.text.includes(fixtureKey), false);
+  assert.equal(await app.locals.workspaceSettingsService.getProviderCredential(ownerId, "gemini"), fixtureKey);
 
   // Old signed-in users are backfilled when a durable identity snapshot is missing.
   await runtime.pool.query("DELETE FROM app_users WHERE user_id=$1", [ownerId]);

@@ -4,14 +4,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OMENSITE :: <%= page.route.title %></title>
-    <meta name="description" content="Omensite — a retro-terminal trading operations hub: alerts, TradingView indicator access, market news, financial reports, and a shareable trade journal.">
+    <meta name="description" content="Omensite — agentic research, connected accounts, reviewed trading decisions, and a persistent trade journal.">
     <meta name="csrf-token" content="<%= csrfToken %>">
     <%- include("../partials/redline-head") %>
   </head>
   <body>
 
     <main id="app" aria-live="polite">
-      <div class="shell" data-app-shell>
+      <div class="shell" data-app-shell data-active-route="<%= page.route.key %>">
         <%- include("../partials/statusbar", { page }) %>
         <div class="body" data-shell-body>
           <%- include("../partials/sidebar", { page }) %>
