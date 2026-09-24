@@ -37,7 +37,8 @@ test("readiness reflects account evidence while keeping live requirements pendin
     runs: [{ input: { mode: "demo" }, result: {}, status: "completed", metrics: { modelCalls: 0 } }] };
   const report = buildBrainReadiness({ state, now: NOW, documents: [{ kind: "memory" }, { kind: "knowledge" }] });
   for (const id of ["storage", "demo_workflow", "memory", "knowledge"]) assert.equal(byId(report, id).status, "ready", id);
-  for (const id of ["live_validation", "market_data", "execution"]) assert.equal(byId(report, id).status, "pending", id);
+  for (const id of ["live_validation", "market_data"]) assert.equal(byId(report, id).status, "pending", id);
+  assert.equal(byId(report, "execution").status, "locked");
   assert.match(byId(report, "demo_workflow").detail, /illustrative/);
   const failedDemo = buildBrainReadiness({ state: { ...state, runs: [{ ...state.runs[0], status: "failed" }] } });
   assert.equal(byId(failedDemo, "demo_workflow").status, "pending");

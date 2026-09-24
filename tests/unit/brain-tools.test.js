@@ -173,3 +173,33 @@ test("large tool output and raw dependency errors are rejected without leaking u
     return true;
   });
 });
+
+test("Robinhood tools isolate accounts, preserve dated evidence, and deny demos or direct execution", async (t) => {
+  const calls = [];
+  const f = harness(t, { robinhoodService: {
+    async catalog(owner, group) { calls.push(["catalog", owner, group]); return []; },
+    async read(owner, tool, args, options) {
+      calls.push(["read", owner, tool, args]); assert.ok(options.signal instanceof AbortSignal);
+      return { id: "quote-fixture", tool, fetchedAt: "2026-09-24T12:00:00Z", result: { structuredContent: { price: 100 } } };
+    },
+    async propose(owner, args) { calls.push(["propose", owner, args]); return { status: "awaiting_approval" }; },
+  } });
+  const live = { input: { ...INPUT, mode: "analysis" } };
+  for (const role of ["planner", "researcher", "critic"]) {
+    assert.ok(!f.tools.definitions(role).some((tool) => tool.name === "robinhood.propose"));
+  }
+  assert.ok(!f.tools.definitions("strategist").some((tool) => /decide|execute|place_order/.test(tool.name)));
+  await assert.rejects(f.execute("robinhood.read", { tool: "get_equity_quotes", argumentsJson: "{}" }), { code: "BRAIN_TOOL_DENIED" });
+  await assert.rejects(f.execute("robinhood.read", { tool: "get_equity_quotes", argumentsJson: "{}", ownerId: "bob" }, live), { code: "BRAIN_TOOL_INVALID" });
+  assert.deepEqual(calls, []);
+  const quote = await f.execute("robinhood.read", { tool: "get_equity_quotes", argumentsJson: '{"symbol":"SPY"}' }, live);
+  assert.deepEqual(calls[0], ["read", "alice", "get_equity_quotes", { symbol: "SPY" }]);
+  assert.equal(quote.citations[0].id, "robinhood:quote-fixture");
+  assert.match(quote.citations[0].title, /2026-09-24/);
+  const proposal = { tool: "place_equity_order", argumentsJson: "{}", reason: "Synthetic proposal fixture", thesis: THESIS };
+  await assert.rejects(f.execute("robinhood.propose", { ...proposal, thesis: { ...THESIS, stop: 102 } }, live), { code: "BRAIN_TOOL_DENIED" });
+  const staged = await f.execute("robinhood.propose", proposal, live);
+  assert.equal(staged.data.status, "awaiting_approval");
+  assert.equal(calls[1][1], "alice");
+  assert.equal(calls[1][2].source, "brain");
+});

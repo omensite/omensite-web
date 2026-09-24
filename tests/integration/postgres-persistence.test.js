@@ -37,7 +37,7 @@ test("PostgreSQL retains application records, admission policy, and session revo
     for (const table of ["app_users", "app_bans", "indicator_requests"]) {
       await runtime.pool.query(`DELETE FROM ${table} WHERE user_id=ANY($1::text[])`, [[ownerId, memberId]]);
     }
-    for (const table of ["journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache"]) {
+    for (const table of ["journal_entries", "agent_brain_runs", "agent_brain_documents", "agent_brain_cache", "broker_workspaces"]) {
       await runtime.pool.query(`DELETE FROM ${table} WHERE owner_id=ANY($1::text[])`, [[ownerId, memberId]]);
     }
     await runtime.close();
@@ -63,6 +63,14 @@ test("PostgreSQL retains application records, admission policy, and session revo
   await runtime.journalRepository.create(ownerId, entry);
   const run = await runtime.brainRepository.saveRun(ownerId, { id: randomUUID(), status: "completed", mode: "demo" });
   await runtime.brainRepository.putCache(ownerId, "fixture", { value: { text: "Cached fixture" }, expiresAt: new Date(Date.now() + 60_000).toISOString() });
+  // Competing processes must serialize changes to a broker workspace without losing decisions.
+  await runtime.brokerRepository.update(ownerId, (state) => { state.counter = 0; });
+  await Promise.all(Array.from({ length: 8 }, () => runtime.brokerRepository.update(ownerId, (state) => { state.counter += 1; })));
+  await assert.rejects(runtime.brokerRepository.update(ownerId, (state) => { state.counter = 999; throw new Error("rollback fixture"); }), /rollback fixture/);
+  await runtime.brokerRepository.update(ownerId, (state) => {
+    state.actions.push({ id: "fixture-approval", status: "awaiting_approval", version: 1, tool: "place_equity_order" });
+    state.events.push({ event: "fixture_persistence_check" });
+  });
 
   await runtime.userRepository.upsert({ id: memberId, username: "fixture-member", roles: ["OS"], capabilities: ["base"], discordAuth: { accessToken: "must-not-persist" } });
   await runtime.banRepository.ban({ userId: memberId, actorId: ownerId, reason: "Persistence fixture" });
@@ -99,6 +107,14 @@ test("PostgreSQL retains application records, admission policy, and session revo
   assert.equal((await runtime.brainRepository.getRun(ownerId, run.id)).version, 1);
   assert.equal(await runtime.brainRepository.getRun(memberId, run.id), null);
   assert.equal((await runtime.brainRepository.getCache(ownerId, "fixture")).value.text, "Cached fixture");
+  const brokerState = await runtime.brokerRepository.read(ownerId);
+  assert.equal(brokerState.counter, 8);
+  assert.equal(brokerState.actions[0].id, "fixture-approval");
+  assert.equal(brokerState.paused, true);
+  assert.deepEqual((await runtime.brokerRepository.read(memberId)).actions, []);
+  const brokerResponse = await resumed.get("/api/robinhood/state").set("Cookie", cookie).expect(200);
+  assert.equal(brokerResponse.body.storage.kind, "postgres");
+  assert.equal(brokerResponse.body.actions[0].id, "fixture-approval");
   const state = await resumed.get("/api/brain/state").set("Cookie", cookie).expect(200);
   assert.ok(state.body.documents.some((item) => item.id === documentId));
   assert.ok(state.body.runs.some((item) => item.id === run.id));

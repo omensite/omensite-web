@@ -2,7 +2,7 @@
 
 Open `/brain` from the terminal sidebar. The brain connects a planner, researcher, strategist and critic to the existing trader's provider adapters, risk engine, calendar and journal. Gemini is the default. Each role can route to Gemini, OpenAI or Claude independently.
 
-The control panel opens on an interactive network view inspired by the supplied AI operating-system reference. Select agents, tools, sources or saved missions to inspect their actual configuration and recorded activity. Filters, zoom, view reset and motion controls affect only the visualization. The glowing connections illustrate the application's architecture; they do not expose model weights or claim a neuron count. Mission, Knowledge and Checks tabs retain the run composer, approval workflow, source library, readiness checklist and offline evaluations.
+The control panel opens on an interactive network view inspired by the supplied AI operating-system reference. Select agents, tools, sources or saved missions to inspect their actual configuration and recorded activity. Filters, zoom, view reset and motion controls affect only the visualization. The glowing connections illustrate the application's architecture; they do not expose model weights or claim a neuron count. Mission, Knowledge and Checks tabs retain the run composer, approval workflow, source library, readiness checklist and offline evaluations. The Robinhood tab adds brokerage connection, dated research, previews, separate action review, and audit history for stocks, options, and crypto; see [Robinhood setup and limits](robinhood.md).
 
 The network continuously animates locally while visible, including between missions: Matrix-style glyph streams, traveling synapse pulses, a rotating core and terminal scan effects. Its motion does not start missions or provider requests. Pause freezes the scene; reduced-motion preferences start it paused, and hidden views stop rendering. Expand **How the brain works** below the network for the mission-to-review flow. Recorded mission activity remains separate from the decorative animation.
 
@@ -11,7 +11,7 @@ The network continuously animates locally while visible, including between missi
 | Capability | Working implementation |
 | --- | --- |
 | ReAct loop | `brain-service.js` repeatedly obtains a validated action, executes a permitted tool, records its observation, and chooses the next action. Tool failures become observations for corrective actions within the remaining budget. |
-| Tool calling | `brain-tools.js` exposes typed `context.read`, `knowledge.search`, `memory.search`, `journal.search`, `calendar.read`, and `risk.check` tools. The model returns a structured action envelope; the server dispatches it. |
+| Tool calling | `brain-tools.js` exposes typed context, knowledge, memory, journal, calendar, and risk tools, plus `robinhood.tools`, `robinhood.read`, and strategist-only `robinhood.propose`. The model returns a structured envelope; the server dispatches permitted tools. Models cannot approve broker actions. |
 | Planning and decomposition | The planner creates a validated three-task dependency graph for research, strategy and critique. Invalid or cyclic plans stop before execution. |
 | Reflection and self critique | The separate critic receives the proposal and sources, returns pass/revise/wait, and can request one revision followed by another risk check and critique. |
 | Structured outputs | Provider JSON schemas and server validation cover plans, action envelopes, tool arguments, theses and critiques. Invalid output fails closed. |
@@ -72,7 +72,7 @@ Journal retrieval checks the operator's server-side Journal capability, admissio
 
 ## Scope and validation
 
-This is a bounded research agent system. It has no broker, live price subscription, order execution, autonomous money movement, or arbitrary-code tool. The tool sandbox is an allowlisted capability boundary and an isolated trusted risk worker; it is not an operating-system sandbox for executing hostile programs.
+This is a bounded research agent system with a separately authorized Robinhood workspace. Brokerage reads and order previews require account connection. Live submission is disabled by default and requires a separate confirmation for every action. There is no unattended trading, live price subscription, autonomous money movement, or arbitrary-code tool. The tool sandbox is an allowlisted capability boundary and an isolated trusted risk worker; it is not an operating-system sandbox for executing hostile programs. Product-specific broker risk enforcement and uncertain-order reconciliation remain prerequisites for unattended execution; the research risk calculator does not establish options exposure or validate the broker ticket.
 
 RAG currently uses lexical retrieval, not embeddings. Citation verification proves that a source was observed; it does not independently prove that a model's statement follows from that source. Manual market context remains unverified. The separate critique and human review address those limits without claiming model accuracy or profitable trading.
 

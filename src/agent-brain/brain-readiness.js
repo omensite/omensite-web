@@ -9,7 +9,7 @@ export function summarizeOfflineEvaluation(report, now = new Date()) {
 }
 
 /** Read-only setup evidence. Building this view never invokes a provider or feed. */
-export function buildBrainReadiness({ state, documents = [], lastEvaluation = null, now = new Date() }) {
+export function buildBrainReadiness({ state, documents = [], lastEvaluation = null, broker, now = new Date() }) {
   const paidCallsEnabled = state.paidCallsEnabled === true;
   const providers = state.providers ?? [];
   const primary = providers.find((provider) => provider.id === state.defaultProvider);
@@ -18,6 +18,9 @@ export function buildBrainReadiness({ state, documents = [], lastEvaluation = nu
   const demo = (state.runs ?? []).find((run) => run.input?.mode === "demo" && run.result &&
     ["awaiting_approval", "completed"].includes(run.status) && run.metrics?.modelCalls === 0);
   const durable = state.storage?.persistent === true;
+  const marketSnapshot = broker?.snapshots?.find((snapshot) =>
+    /^(get_(equity|option|crypto)_quotes|get_(equity|option)_historicals|get_equity_(fundamentals|price_book|technical_indicators)|get_financials|get_index_quotes)$/.test(snapshot.tool)
+    && Number.isFinite(Date.parse(snapshot.fetchedAt)));
   const storageName = { sqlite: "SQLite", postgres: "PostgreSQL", memory: "In-memory" }[state.storage?.kind] ?? "Unknown";
   const check = (id, label, status, detail) => ({ id, label, status, detail });
   return {
@@ -48,8 +51,13 @@ export function buildBrainReadiness({ state, documents = [], lastEvaluation = nu
         ? "Server pricing is configured for the default provider. Verify the rates against your account before any later activation."
         : "Dollar budgets require model-specific server pricing. Offline demos and evaluations cost no provider tokens."),
       check("live_validation", "Live AI validation", "pending", "Provider responses, model quality, billed usage and provider prompt-cache behavior remain outside the offline checks. No paid validation is triggered here."),
-      check("market_data", "Live market data", "pending", "Market snapshots are supplied manually. A live price and order-flow feed is not connected to the brain."),
-      check("execution", "Broker execution", "pending", "This system prepares and reviews research. A broker connection and order execution are not implemented."),
+      check("market_data", "Robinhood market data", broker?.connected && marketSnapshot ? "ready" : "pending", broker?.connected
+        ? marketSnapshot ? `A market-data read succeeded at ${marketSnapshot.fetchedAt}. This verifies the connection; check the snapshot's observation time before trading. Data is on demand, not streaming.`
+          : "Robinhood is connected. Fetch a quote or market research snapshot to verify market-data access. An account balance alone does not validate a market feed."
+        : "Connect Robinhood in the Robinhood tab for stock, options, and crypto data. Manual context remains available."),
+      check("execution", "Robinhood submissions", broker?.liveEnabled && broker?.connected && !broker.paused ? "ready" : "locked", broker?.liveEnabled
+        ? "Each exact broker action requires its own confirmation. Research approval only saves memory. Unconfirmed outcomes block additional submissions."
+        : "The Robinhood workflow is installed. Live submissions are locked on the server; connection, reads, and order previews can be tested separately."),
     ],
   };
 }

@@ -13,6 +13,7 @@
     <div class="brain-tabs" role="tablist" aria-label="Agent workspace">
       <button type="button" id="brain-tab-network" role="tab" aria-controls="brain-panel-network" aria-selected="true" data-brain-view="network">Network</button>
       <button type="button" id="brain-tab-mission" role="tab" aria-controls="brain-panel-mission" aria-selected="false" tabindex="-1" data-brain-view="mission">Mission <span class="brain-review-count" data-brain-review-count hidden></span></button>
+      <button type="button" id="brain-tab-robinhood" role="tab" aria-controls="brain-panel-robinhood" aria-selected="false" tabindex="-1" data-brain-view="robinhood">Robinhood</button>
       <button type="button" id="brain-tab-knowledge" role="tab" aria-controls="brain-panel-knowledge" aria-selected="false" tabindex="-1" data-brain-view="knowledge">Knowledge</button>
       <button type="button" id="brain-tab-checks" role="tab" aria-controls="brain-panel-checks" aria-selected="false" tabindex="-1" data-brain-view="checks">Checks</button>
     </div>
@@ -46,7 +47,7 @@
           <label class="field">DEFAULT PROVIDER<select name="provider"><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="claude">Claude</option></select></label>
           <p class="brain-provider-note" data-brain-provider>Checking server configuration…</p>
           <div class="trader-form-grid">
-            <label class="field">SYMBOL<input name="symbol" value="ES" maxlength="24" required></label>
+            <label class="field">SYMBOL<input name="symbol" value="SPY" maxlength="24" required></label>
             <label class="field">TIMEFRAME<select name="timeframe"><option value="1m">1 minute</option><option value="5m">5 minutes</option><option value="15m" selected>15 minutes</option><option value="1h">1 hour</option><option value="4h">4 hours</option><option value="1d">1 day</option></select></label>
           </div>
           <label class="field">MARKET CONTEXT<textarea name="context" rows="5" minlength="40" maxlength="12000" placeholder="Paste dated observations, OHLC data, price levels, and session context." required></textarea></label>
@@ -55,7 +56,7 @@
             <div class="trader-form-grid">
               <label class="field">ACCOUNT ($)<input name="accountSize" type="number" min="0.01" max="1000000000" step="0.01" value="50000" required></label>
               <label class="field">RISK (%)<input name="riskPercent" type="number" min="0.01" max="5" step="0.01" value="0.5" required></label>
-              <label class="field">VALUE / POINT ($)<input name="pointValue" type="number" min="0.000001" max="1000000" step="any" value="50" required></label>
+              <label class="field">VALUE / POINT ($)<input name="pointValue" type="number" min="0.000001" max="1000000" step="any" value="1" required></label>
               <label class="field">MIN. REWARD / RISK<input name="minRewardRisk" type="number" min="1" max="20" step="0.1" value="2" required></label>
             </div>
           </details>
@@ -94,6 +95,10 @@
         <section class="panel"><header class="trader-panel-head"><h2>RECENT MISSIONS</h2><button type="button" class="trader-text-button" data-brain-refresh>Refresh</button></header><div class="brain-history" data-brain-history><p class="brain-placeholder">No missions yet.</p></div></section>
       </div>
     </div>
+  </section>
+
+  <section id="brain-panel-robinhood" class="brain-view" data-brain-panel="robinhood" role="tabpanel" aria-labelledby="brain-tab-robinhood" tabindex="0" hidden>
+    <%- include("../partials/robinhood-workspace") %>
   </section>
 
   <section id="brain-panel-knowledge" class="brain-view" data-brain-panel="knowledge" role="tabpanel" aria-labelledby="brain-tab-knowledge" tabindex="0" hidden>

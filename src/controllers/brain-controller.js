@@ -44,7 +44,7 @@ const ERRORS = Object.freeze({
   TRADER_OUTPUT_INVALID: [502, "The AI returned an incomplete response."],
 });
 
-export function createBrainController({ brainService, brainKnowledge, brainTools, brainEvaluator = runBrainEvaluations, logger = console }) {
+export function createBrainController({ brainService, brainKnowledge, brainTools, brainEvaluator = runBrainEvaluations, robinhoodService, logger = console }) {
   // Fixture results contain no operator data and apply only to this server instance.
   // A restart requires a fresh check, so stale results never imply a new build passed.
   let lastEvaluation = null;
@@ -74,8 +74,9 @@ export function createBrainController({ brainService, brainKnowledge, brainTools
     state: handle(async (req, res, ownerId) => {
       const state = await brainService.getState(ownerId);
       const documents = await brainKnowledge.listDocuments(ownerId);
+      const broker = await robinhoodService?.state(ownerId);
       return res.json({ ...state, documents, toolDefinitions: brainTools?.definitions("strategist") ?? [],
-        readiness: buildBrainReadiness({ state, documents, lastEvaluation }) });
+        readiness: buildBrainReadiness({ state, documents, lastEvaluation, broker }) });
     }),
     getRun: handle(async (req, res, ownerId) => {
       const run = await brainService.getRun(ownerId, req.params.id);

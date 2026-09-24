@@ -35,6 +35,8 @@ import { createBrainModelGateway } from "./agent-brain/brain-model-gateway.js";
 import { createBrainTools } from "./agent-brain/brain-tools.js";
 import { createBrainService } from "./agent-brain/brain-service.js";
 import { createBrainRoutes } from "./routes/brain-routes.js";
+import { createRobinhoodService } from "./brokers/robinhood-service.js";
+import { createRobinhoodRoutes } from "./routes/robinhood-routes.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,6 +68,8 @@ export function createApp({
   brainTools,
   brainService,
   brainEvaluator,
+  robinhoodService,
+  brokerRepository,
   readinessCheck = async () => true,
   configureRoutes,
   logger = console,
@@ -115,6 +119,7 @@ export function createApp({
   });
 
   const resolvedAIProvider = traderAIProvider ?? createTraderAIProvider();
+  const resolvedRobinhoodService = robinhoodService ?? createRobinhoodService({ repository: brokerRepository });
   const resolvedBrainKnowledge = brainKnowledge ?? createBrainKnowledge({ repository: brainRepository });
   const resolvedBrainGateway = brainModelGateway ?? createBrainModelGateway({ aiProvider: resolvedAIProvider, repository: brainRepository });
   const canReadBrainJournal = async (ownerId) => {
@@ -134,6 +139,7 @@ export function createApp({
   };
   const resolvedBrainTools = brainTools ?? createBrainTools({
     knowledge: resolvedBrainKnowledge, journalRepository, marketNewsService, canReadJournal: canReadBrainJournal,
+    robinhoodService: resolvedRobinhoodService,
   });
   const resolvedBrainService = brainService ?? createBrainService({
     repository: brainRepository, knowledge: resolvedBrainKnowledge,
@@ -154,10 +160,11 @@ export function createApp({
   app.locals.brainRepository = brainRepository;
   app.locals.brainKnowledge = resolvedBrainKnowledge;
   app.locals.brainTools = resolvedBrainTools;
+  app.locals.robinhoodService = resolvedRobinhoodService;
   app.set("trust proxy", trustProxy ?? (environment === "production" ? 1 : false));
   app.set("view engine", "ejs");
   app.set("views", path.join(sourceDirectory, "..", "views"));
-  app.use(["/brain", "/api/brain"], (req, res, next) => {
+  app.use(["/brain", "/api/brain", "/api/robinhood", "/auth/robinhood"], (req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
@@ -235,6 +242,7 @@ export function createApp({
     next();
   });
   app.use(createAdminRoutes({ adminService: resolvedAdminService }));
+  app.use(createRobinhoodRoutes({ robinhoodService: resolvedRobinhoodService }));
   app.use(createIndicatorRoutes({ indicatorAccessService: resolvedIndicatorAccessService }));
   app.use(createPageRoutes({ marketNewsService, logger }));
   app.use(createTraderRoutes({
@@ -246,7 +254,7 @@ export function createApp({
   }));
   app.use(createBrainRoutes({
     brainService: resolvedBrainService, brainKnowledge: resolvedBrainKnowledge,
-    brainTools: resolvedBrainTools, brainEvaluator, logger,
+    brainTools: resolvedBrainTools, brainEvaluator, robinhoodService: resolvedRobinhoodService, logger,
   }));
   app.use(createJournalRoutes({ journalRepository }));
 
