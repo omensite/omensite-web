@@ -12,9 +12,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/css/omensite.css">
-    <link rel="stylesheet" href="/css/trader.css">
-    <link rel="stylesheet" href="/css/brain.css">
+    <link rel="stylesheet" href="<%= assetPath('/css/omensite.css') %>">
+    <link rel="stylesheet" href="<%= assetPath('/css/trader.css') %>">
+    <link rel="stylesheet" href="<%= assetPath('/css/brain.css') %>">
   </head>
   <body>
     <div class="crt-scan" aria-hidden="true"></div>
@@ -45,6 +45,6 @@
       </div>
     </noscript>
 
-    <script type="module" src="/js/app-shell.js"></script>
+    <script type="module" src="<%= assetPath('/js/app-shell.js') %>"></script>
   </body>
 </html>

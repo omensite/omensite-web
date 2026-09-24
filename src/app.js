@@ -37,8 +37,11 @@ import { createBrainService } from "./agent-brain/brain-service.js";
 import { createBrainRoutes } from "./routes/brain-routes.js";
 import { createRobinhoodService } from "./brokers/robinhood-service.js";
 import { createRobinhoodRoutes } from "./routes/robinhood-routes.js";
+import { createAssetManifest } from "./runtime/asset-manifest.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
+const publicDirectory = path.join(sourceDirectory, "..", "public");
+const assetManifest = createAssetManifest(publicDirectory);
 
 export function createApp({
   sessionSecret,
@@ -147,6 +150,7 @@ export function createApp({
   });
 
   const app = express();
+  app.locals.assetPath = assetManifest.assetPath;
   app.locals.authConfig = resolvedAuthConfig;
   app.locals.authService = resolvedAuthService;
   app.locals.userRepository = userRepository;
@@ -170,7 +174,11 @@ export function createApp({
   });
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
-  app.use(express.static(path.join(sourceDirectory, "..", "public")));
+  app.use(`/assets/${assetManifest.version}`, express.static(publicDirectory, {
+    maxAge: environment === "production" ? "1y" : 0, immutable: environment === "production", index: false,
+  }));
+  // Legacy unversioned URLs must revalidate; the HTML uses deployment-specific URLs.
+  app.use(express.static(publicDirectory, { setHeaders: (res) => res.setHeader("Cache-Control", "no-cache") }));
   app.use(session({
     store: resolvedSessionStore,
     secret: secret ?? "omensite-local-development-secret",
