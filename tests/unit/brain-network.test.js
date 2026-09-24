@@ -27,6 +27,8 @@ function canvasHarness({ reducedMotion = false } = {}) {
   }
   return {
     frames, disconnected, get paints() { return paints; }, snapshot: () => JSON.stringify(operations),
+    glyphs: () => operations.filter(([name, text]) => name === "fillText" && /^[01]$/.test(text)),
+    lobeAnchors: () => operations.filter(([name, , , width, height]) => name === "fillRect" && width === 3 && height === 3).map(([, x, y]) => [x, y]),
     install(window) {
       window.CanvasRenderingContext2D = function () {};
       window.HTMLCanvasElement.prototype.getContext = () => context;
@@ -246,14 +248,23 @@ test("theme changes repaint the paused canvas with the current palette and dispo
   assert.equal(harness.paints, paints);
 });
 
-test("idle decorative animation continues at a bounded paint rate and pause preserves its exact phase", (t) => {
+test("idle glyphs animate at a bounded paint rate without rotating the brain and pause preserves their exact phase", (t) => {
   const harness = canvasHarness(), app = fixture(t, {}, harness.install);
   assert.equal(app.find(".brain-network-shell").dataset.motion, "running");
   assert.match(app.find(".brain-network-mode").textContent, /IDLE/);
   assert.match(app.find(".brain-network-decoration-note").textContent, /DECORATIVE.*ZERO AI TOKENS/);
-  harness.step(0); const first = harness.snapshot(), paints = harness.paints;
+  harness.step(0); const first = harness.snapshot(), paints = harness.paints, anchors = harness.lobeAnchors(), firstGlyphs = harness.glyphs();
+  assert.equal(anchors.length, BRAIN_REGIONS.length, "each lobe has a visible attachment point");
+  assert.ok(firstGlyphs.length > 0, "binary particles are rendered");
   harness.step(10); harness.step(20); assert.equal(harness.paints, paints, "skip paints above 30 fps");
   harness.step(34); assert.equal(harness.paints, paints + 1); assert.notEqual(harness.snapshot(), first);
+  for (let time = 74; time <= 1074; time += 40) {
+    harness.step(time);
+    assert.deepEqual(harness.lobeAnchors(), anchors, "idle frames retain the brain's orientation");
+  }
+  assert.notDeepEqual(harness.glyphs(), firstGlyphs, "binary particles continue to change while the brain stays still");
+  const glyphPositions = (glyphs) => glyphs.map(([, , x, y]) => [x, y]).sort(([ax, ay], [bx, by]) => ax - bx || ay - by);
+  assert.notDeepEqual(glyphPositions(harness.glyphs()), glyphPositions(firstGlyphs), "particles move locally, rather than only changing their displayed digit");
   const moving = harness.snapshot();
   app.find('[aria-label="Pause network motion"]').click();
   assert.equal(harness.frames.size, 0); assert.equal(harness.snapshot(), moving, "pause must not reset the animation phase");
@@ -263,6 +274,26 @@ test("idle decorative animation continues at a bounded paint rate and pause pres
   assert.equal(harness.snapshot(), moving, "time spent paused must not advance the scene");
   harness.step(90040); assert.notEqual(harness.snapshot(), moving);
   assert.match(app.find(".brain-network-activity").textContent, /No mission activity yet/);
+});
+
+test("manual drag and arrow rotation remain available and retain their orientation after input stops", (t) => {
+  const harness = canvasHarness(), app = fixture(t, {}, harness.install), stage = app.find(".brain-network-stage");
+  harness.step(0); const original = harness.lobeAnchors();
+  stage.dispatchEvent(new app.dom.window.MouseEvent("pointerdown", { button: 0, clientX: 100, clientY: 100, bubbles: true }));
+  stage.dispatchEvent(new app.dom.window.MouseEvent("pointermove", { clientX: 180, clientY: 120, bubbles: true }));
+  const dragged = harness.lobeAnchors();
+  assert.notDeepEqual(dragged, original, "dragging changes the projected orientation");
+  stage.dispatchEvent(new app.dom.window.MouseEvent("pointerup", { clientX: 180, clientY: 120, bubbles: true }));
+  for (let time = 40; time <= 400; time += 40) {
+    harness.step(time);
+    assert.deepEqual(harness.lobeAnchors(), dragged, "releasing the drag does not resume automatic rotation");
+  }
+  stage.dispatchEvent(new app.dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  const keyed = harness.lobeAnchors(); assert.notDeepEqual(keyed, dragged, "arrow keys still rotate the brain");
+  harness.step(440); assert.deepEqual(harness.lobeAnchors(), keyed, "keyboard rotation holds when idle");
+  app.find('[aria-label="Reset network view"]').click();
+  assert.deepEqual(harness.lobeAnchors(), original, "reset restores the initial orientation");
+  harness.step(480); assert.deepEqual(harness.lobeAnchors(), original);
 });
 
 test("background tabs and hidden panels suspend rendering without losing the current phase", (t) => {

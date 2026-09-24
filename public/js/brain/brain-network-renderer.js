@@ -56,14 +56,22 @@ export function createBrainNetworkRenderer(context, colors = {}) {
     context.fillStyle = red; context.font = `9px ${mono}`;
     for (let index = 0; index < 24; index++) { const angle = index / 24 * TAU, p = project(Math.cos(angle) * (1.55 + e * .5), -.15, Math.sin(angle) * (1.55 + e * .5)); context.globalAlpha = Math.max(.1, Math.min(.8, .25 + .5 * (p.depth + 1.6) / 3.2)); context.fillText(index % 6 === 0 ? (index * 15).toString(2).padStart(9, '0') : '+', p.x - 3, p.y + 3); }
     context.globalAlpha = .4; context.strokeStyle = red; context.lineWidth = 1.5;
-    for (const [offset, extent] of [[0, 1.1], [Math.PI, .6]]) { context.beginPath(); context.arc(cx, cy, scale * 1.72, seconds * .3 + offset, seconds * .3 + offset + extent); context.stroke(); }
-    context.globalAlpha = .22; context.lineWidth = 1; context.beginPath(); context.arc(cx, cy, scale * 1.72 + 10, -seconds * .2, -seconds * .2 + 2.2); context.stroke();
+    for (const [offset, extent] of [[0, 1.1], [Math.PI, .6]]) { context.beginPath(); context.arc(cx, cy, scale * 1.72, offset, offset + extent); context.stroke(); }
+    context.globalAlpha = .22; context.lineWidth = 1; context.beginPath(); context.arc(cx, cy, scale * 1.72 + 10, 0, 2.2); context.stroke();
     const buckets = Array.from({ length: 15 }, () => []), scan = -.125 + Math.sin(seconds * .47) * 1.175;
     projected = decorated.map((point, index) => {
       const c = centroids.get(point.region), offset = e * (point.region === 'stem' ? .45 : .62), k = ease((assembly - point.delay) / .9);
       const coordinates = [point.x, point.y, point.z].map((value, axis) => { const assembled = value + c[axis + 4] * offset + point.jitter[axis] * e * .125; return point.origin[axis] + (assembled - point.origin[axis]) * k; });
       const p = project(...coordinates), layer = Math.max(0, Math.min(4, Math.floor((p.depth + 1.3) / 2.6 * 5)));
-      buckets[layer * 3 + (point.region === selectedRegion ? 2 : Math.abs(point.y - scan) < .035 ? 1 : 0)].push({ ...p, index });
+      // Independent, deterministic bursts keep the digits restless without
+      // rotating or deforming the anatomical silhouette or its label anchors.
+      const beat = seconds * (1.8 + (index % 11) * .17) + point.delay * 9;
+      let signal = Math.imul(index + 1, 374761393) ^ Math.imul(Math.floor(beat) + 1, 668265263);
+      signal = Math.imul(signal ^ (signal >>> 13), 1274126177) >>> 0;
+      const burst = signal % 100 < 18, pulse = burst ? Math.sin((beat % 1) * Math.PI) * zoom : 0;
+      p.x += pulse * ((signal >>> 8 & 1) ? 2.4 : -2.4);
+      p.y += pulse * ((signal >>> 9 & 1) ? 4.5 : -4.5);
+      buckets[layer * 3 + (point.region === selectedRegion ? 2 : burst || Math.abs(point.y - scan) < .035 ? 1 : 0)].push({ ...p, glyph: point.glyph ^ (signal & 1) });
       return { ...p, region: point.region };
     });
     context.globalCompositeOperation = dark ? 'lighter' : 'source-over';
@@ -71,7 +79,7 @@ export function createBrainNetworkRenderer(context, colors = {}) {
       const layer = Math.floor(bucket / 3), kind = bucket % 3;
       context.font = `${kind === 2 ? '600 ' : ''}${(6.5 + layer * 1.6 * zoom).toFixed(1)}px ${mono}`;
       context.fillStyle = kind ? glow : red; context.globalAlpha = Math.min(1, .18 + layer * .15 + (kind ? .15 : 0));
-      for (const p of items) { const point = decorated[p.index], flip = Math.floor(seconds * (1.4 + (p.index % 7) * .13) + p.index * .37) % 2; context.fillText(String(point.glyph ^ flip), p.x, p.y); }
+      for (const p of items) context.fillText(String(p.glyph), p.x, p.y);
     }
     context.globalCompositeOperation = 'source-over'; context.globalAlpha = 1;
     return new Map([...centroids].map(([region, c]) => { const offset = e * (region === 'stem' ? .45 : .62); return [region, project(c[0] + c[4] * offset, c[1] + c[5] * offset, c[2] + c[6] * offset)]; }));

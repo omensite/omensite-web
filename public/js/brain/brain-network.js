@@ -71,7 +71,7 @@ export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
   const el = (tag, text, className) => { const item = document.createElement(tag); if (text !== undefined) item.textContent = text; if (className) item.className = className; return item; };
   const button = (text, className, ariaLabel) => { const item = el("button", text, className); item.type = "button"; if (ariaLabel) item.setAttribute("aria-label", ariaLabel); return item; };
   let data = buildBrainNetworkData(), selectedId = "omen", filter = "all", zoom = 1, yaw = -.6, pitch = .22;
-  let rotation = 0, exploded = 0, explosionFrom = 0, explosionTarget = 0, explosionStart = 0, assemblyStart = null;
+  let exploded = 0, explosionFrom = 0, explosionTarget = 0, explosionStart = 0, assemblyStart = null;
   let disposed = false, frame = null, lastPaint = null, lastFrameTime = null, sceneTime = 0, width = 680, height = 540, drag = null, hasCanvas = false, intersecting = true;
   const motionQuery = window?.matchMedia?.("(prefers-reduced-motion: reduce)");
   let paused = Boolean(motionQuery?.matches);
@@ -223,7 +223,7 @@ export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
     if (disposed) return;
     const progress = Math.min(1, Math.max(0, (sceneTime - explosionStart) / 850)); exploded = explosionFrom + (explosionTarget - explosionFrom) * (1 - (1 - progress) ** 3);
     const selected = data.nodes.find((node) => node.id === selectedId), parent = data.nodes.find((node) => node.id === selected?.parent);
-    const anchors = renderCanvas?.({ width, height, zoom, time: sceneTime, yaw: yaw + rotation, pitch, exploded, assembly: assemblyStart === null ? 1.6 : (sceneTime - assemblyStart) / 1000 * .75, selectedRegion: selected?.region ?? parent?.region });
+    const anchors = renderCanvas?.({ width, height, zoom, time: sceneTime, yaw, pitch, exploded, assembly: assemblyStart === null ? 1.6 : (sceneTime - assemblyStart) / 1000 * .75, selectedRegion: selected?.region ?? parent?.region });
     const sides = { left: [], right: [] };
     for (const [id, item] of lobeButtons) {
       const node = data.nodes.find((node) => node.id === id), point = anchors?.get(node.region) ?? project(node.position);
@@ -250,7 +250,9 @@ export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
     // An accumulated scene clock freezes exactly where it was paused. Refreshes and
     // background-tab time cannot reset the scene or create a jump on resume.
     if (lastPaint === null || time - lastPaint >= 1000 / 30) {
-      if (lastFrameTime !== null) { const elapsed = Math.min(100, Math.max(0, time - lastFrameTime)); sceneTime += elapsed; if (!drag) rotation += elapsed / 1000 * .18; }
+      // Only the binary activity advances on its own. Orientation belongs to the
+      // operator, so the brain and its lobe labels stay still between gestures.
+      if (lastFrameTime !== null) sceneTime += Math.min(100, Math.max(0, time - lastFrameTime));
       lastFrameTime = time; draw(); lastPaint = time;
     }
     frame = window.requestAnimationFrame(animate);
@@ -278,7 +280,7 @@ export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
   const toggleExplosion = () => { explosionFrom = exploded; explosionTarget = explosionTarget ? 0 : 1; explosionStart = sceneTime; if (paused || !hasCanvas) { exploded = explosionTarget; explosionFrom = exploded; } disassemble.textContent = explosionTarget ? "ASSEMBLE" : "DISASSEMBLE"; disassemble.setAttribute("aria-pressed", String(Boolean(explosionTarget))); draw(); };
   listen(disassemble, "click", toggleExplosion);
   listen(reassemble, "click", () => { assemblyStart = paused || !hasCanvas ? null : sceneTime; draw(); });
-  listen(zoomOut, "click", () => setZoom(zoom - .1)); listen(zoomIn, "click", () => setZoom(zoom + .1)); listen(reset, "click", () => { yaw = -.6; pitch = .22; rotation = 0; setZoom(1); }); listen(motion, "click", () => setMotion(!paused));
+  listen(zoomOut, "click", () => setZoom(zoom - .1)); listen(zoomIn, "click", () => setZoom(zoom + .1)); listen(reset, "click", () => { yaw = -.6; pitch = .22; setZoom(1); }); listen(motion, "click", () => setMotion(!paused));
   listen(stage, "pointerdown", (event) => { if (event.button !== 0 || event.pointerType === "touch" || event.target.closest("button")) return; drag = { x: event.clientX, y: event.clientY, yaw, pitch, id: event.pointerId }; stage.setPointerCapture?.(event.pointerId); stage.classList.add("brain-network-dragging"); });
   listen(stage, "pointermove", (event) => { if (!drag) return; yaw = drag.yaw + (event.clientX - drag.x) * .008; pitch = Math.max(-1.2, Math.min(1.2, drag.pitch + (event.clientY - drag.y) * .008)); draw(); });
   const endDrag = () => { if (drag) { try { stage.releasePointerCapture?.(drag.id); } catch { /* Capture can end outside the viewport. */ } drag = null; stage.classList.remove("brain-network-dragging"); } };

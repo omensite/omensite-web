@@ -19,7 +19,7 @@ The source demo's account balances, performance charts, eight simulated agents, 
 ## Behavior
 
 - Core is the default. Daylight is a user preference stored under `omensite-theme`; it contains no account information. The canvas updates when the theme changes.
-- Brain animation is decorative and uses no model tokens. It runs at a capped 30 fps, stops when hidden, supports manual pause and reduced motion, and disposes its observers and handlers when leaving the route.
+- Brain animation is decorative and uses no model tokens. Its orientation stays fixed until you rotate it; individual binary glyphs shift, flicker and brighten in sporadic bursts. It runs at a capped 30 fps, stops when hidden, supports manual pause and reduced motion, and disposes its observers and handlers when leaving the route.
 - Agent, tool, source and mission controls remain keyboard accessible without canvas support. The canvas supports arrow-key rotation and `E` for disassembly when focused.
 - Smaller screens use a navigation drawer and put the Brain above its roster and inspector. Forms and market cards keep their existing actions.
 - Discord authentication, capability filtering, paid-AI settings, broker submission locks, exact-action review, CSRF and owner isolation remain enforced by the existing server.
