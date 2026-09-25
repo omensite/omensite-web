@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +15,12 @@ test("Robinhood configuration preserves live lock and validates callback/encrypt
   assert.equal(readRobinhoodConfig(env).redirectUri, "https://beta.omensite.com/auth/robinhood/callback");
   assert.equal(readRobinhoodConfig(env).configured, true);
   assert.equal(readRobinhoodConfig(env).liveEnabled, false);
+  assert.equal(readRobinhoodConfig({ ...env, ROBINHOOD_CLIENT_ID: " approved-fixture-client " }).clientId, "approved-fixture-client");
+  for (const clientId of ["embedded\nnewline", "contains space", "a".repeat(1025)]) {
+    const config = readRobinhoodConfig({ ...env, ROBINHOOD_CLIENT_ID: clientId });
+    assert.equal(config.configured, false);
+    assert.deepEqual(config.missing, ["ROBINHOOD_CLIENT_ID"]);
+  }
   for (const url of ["http://beta.omensite.com/auth/robinhood/callback", "https://u:p@example.com/auth/robinhood/callback", "https://example.com/other", "https://example.com/auth/robinhood/callback#token"]) assert.equal(readRobinhoodConfig({ ...env, ROBINHOOD_REDIRECT_URI: url }).configured, false);
 });
 
@@ -25,7 +32,7 @@ test("encrypted credentials cannot be moved between users or decrypted after tam
   assert.throws(() => cipher.open("a", { ...sealed, data: sealed.data.slice(4) }), { code: "ROBINHOOD_RECONNECT" });
 });
 
-test("public OAuth client uses PKCE, exact redirect, resource binding, and refreshed credentials", async () => {
+test("public OAuth client registers the requested scope and binds PKCE, redirect, and resource through token exchange", async () => {
   const calls = [];
   const client = createRobinhoodClient({ fetchImpl: async (url, options) => {
     calls.push({ url, ...options });
@@ -33,15 +40,60 @@ test("public OAuth client uses PKCE, exact redirect, resource binding, and refre
   } });
   const { pending, authorizationUrl } = await client.begin("https://omensite.test/auth/robinhood/callback");
   const url = new URL(authorizationUrl);
+  const registration = JSON.parse(calls[0].body);
+  assert.equal(registration.scope, "internal");
+  assert.equal(url.searchParams.get("scope"), registration.scope);
+  assert.equal(registration.token_endpoint_auth_method, "none");
+  assert.deepEqual(registration.redirect_uris, [pending.redirectUri]);
+  assert.equal(url.searchParams.get("redirect_uri"), pending.redirectUri);
+  assert.equal(url.searchParams.get("client_id"), pending.clientId);
+  assert.equal(url.searchParams.get("state"), pending.state);
+  assert.equal(url.searchParams.get("response_type"), "code");
+  assert.equal(url.searchParams.get("resource"), "https://agent.robinhood.com/mcp/trading");
   assert.equal(url.origin, "https://robinhood.com"); assert.equal(url.searchParams.get("code_challenge_method"), "S256");
-  assert.notEqual(url.searchParams.get("code_challenge"), pending.verifier);
+  assert.match(pending.verifier, /^[A-Za-z0-9._~-]{43,128}$/);
+  assert.equal(url.searchParams.get("code_challenge"), createHash("sha256").update(pending.verifier).digest("base64url"));
   const credentials = await client.complete(pending, "fixture-code");
   await client.refresh(credentials);
   const exchange = new URLSearchParams(calls[1].body);
+  assert.equal(exchange.get("code"), "fixture-code");
+  assert.equal(exchange.get("client_id"), pending.clientId);
   assert.equal(exchange.get("code_verifier"), pending.verifier);
   assert.equal(exchange.get("redirect_uri"), pending.redirectUri);
   assert.equal(exchange.get("resource"), "https://agent.robinhood.com/mcp/trading");
   assert.ok(calls.every((item) => item.redirect === "error"));
+});
+
+test("configured public client skips registration and retains its identity through authorization, exchange, and refresh", async () => {
+  const h = robinhoodHarness();
+  const config = readRobinhoodConfig({ ROBINHOOD_TOKEN_ENCRYPTION_KEY: "ab".repeat(32),
+    ROBINHOOD_REDIRECT_URI: "https://beta.omensite.com/auth/robinhood/callback", ROBINHOOD_CLIENT_ID: "approved-fixture-client", NODE_ENV: "production" });
+  const calls = [];
+  const client = createRobinhoodClient({ fetchImpl: async (url, options) => {
+    assert.equal(url, "https://api.robinhood.com/oauth2/token/");
+    calls.push(new URLSearchParams(options.body));
+    return new Response(JSON.stringify({ access_token: "token", refresh_token: "refresh", token_type: "Bearer", expires_in: 3600 }));
+  } });
+  const service = createRobinhoodService({ repository: h.repository, config, client });
+  const { pending, authorizationUrl } = await service.begin("owner");
+  const second = await service.begin("owner");
+  assert.equal(calls.length, 0);
+  const params = new URL(authorizationUrl).searchParams;
+  assert.equal(params.get("client_id"), config.clientId);
+  assert.equal(params.get("redirect_uri"), config.redirectUri);
+  assert.equal(params.get("scope"), "internal");
+  assert.equal(params.get("resource"), "https://agent.robinhood.com/mcp/trading");
+  assert.equal(params.get("state"), pending.state);
+  assert.equal(params.get("code_challenge_method"), "S256");
+  assert.equal(params.get("code_challenge"), createHash("sha256").update(pending.verifier).digest("base64url"));
+  assert.notEqual(pending.state, second.pending.state);
+  assert.notEqual(pending.verifier, second.pending.verifier);
+  const credentials = await client.complete(pending, "fixture-code");
+  await client.refresh(credentials);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((body) => body.get("client_id") === config.clientId && !body.has("client_secret")));
+  assert.equal(calls[0].get("redirect_uri"), config.redirectUri);
+  assert.equal(calls[0].get("code_verifier"), pending.verifier);
 });
 
 test("ephemeral stores cannot hold a connected brokerage account", async () => {

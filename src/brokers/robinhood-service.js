@@ -95,7 +95,7 @@ export function createRobinhoodService({ repository = createMemoryBrokerReposito
     },
     async begin(owner) {
       configured();
-      return { ...await client.begin(config.redirectUri), ownerId: owner };
+      return { ...await client.begin(config.redirectUri, config.clientId), ownerId: owner };
     },
     async complete(owner, pending, code) {
       configured();

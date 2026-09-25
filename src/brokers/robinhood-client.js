@@ -7,8 +7,11 @@ import { ROBINHOOD_MCP_URL, brokerError } from "./robinhood-catalog.js";
 const AUTHORIZE = "https://robinhood.com/oauth";
 const REGISTER = "https://agent.robinhood.com/oauth/trading/register";
 const TOKEN = "https://api.robinhood.com/oauth2/token/";
+const OAUTH_SCOPE = "internal";
 export function readRobinhoodConfig(env = process.env) {
   const key = env.ROBINHOOD_TOKEN_ENCRYPTION_KEY?.trim() ?? "";
+  const clientId = env.ROBINHOOD_CLIENT_ID?.trim() ?? "";
+  const validClientId = !clientId || /^[\x21-\x7e]{1,1024}$/.test(clientId);
   let redirectUri = env.ROBINHOOD_REDIRECT_URI?.trim();
   if (!redirectUri && env.DISCORD_REDIRECT_URI) {
     try { redirectUri = new URL("/auth/robinhood/callback", env.DISCORD_REDIRECT_URI).href; } catch {}
@@ -19,9 +22,9 @@ export function readRobinhoodConfig(env = process.env) {
     validRedirect = !url.username && !url.password && !url.hash && !url.search && url.pathname === "/auth/robinhood/callback"
       && (url.protocol === "https:" || (env.NODE_ENV !== "production" && url.protocol === "http:" && ["127.0.0.1", "localhost"].includes(url.hostname)));
   } catch {}
-  return { encryptionKey: key, redirectUri, configured: /^[a-fA-F0-9]{64}$/.test(key) && validRedirect,
+  return { encryptionKey: key, redirectUri, clientId, configured: /^[a-fA-F0-9]{64}$/.test(key) && validRedirect && validClientId,
     liveEnabled: env.ROBINHOOD_LIVE_TRADING_ENABLED === "true",
-    missing: [...(!/^[a-fA-F0-9]{64}$/.test(key) ? ["ROBINHOOD_TOKEN_ENCRYPTION_KEY"] : []), ...(!validRedirect ? ["ROBINHOOD_REDIRECT_URI"] : [])] };
+    missing: [...(!/^[a-fA-F0-9]{64}$/.test(key) ? ["ROBINHOOD_TOKEN_ENCRYPTION_KEY"] : []), ...(!validRedirect ? ["ROBINHOOD_REDIRECT_URI"] : []), ...(!validClientId ? ["ROBINHOOD_CLIENT_ID"] : [])] };
 }
 export function createBrokerCipher(keyHex) {
   const key = Buffer.from(keyHex, "hex");
@@ -60,15 +63,21 @@ export function createRobinhoodClient({ fetchImpl = fetch, now = () => Date.now(
       expiresAt: now() + Number(value.expires_in) * 1000 };
   }
   return {
-    async begin(redirectUri) {
-      const registration = await jsonRequest(REGISTER, { client_name: "SYNERGY Brain", redirect_uris: [redirectUri],
-        token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"] });
-      if (typeof registration.client_id !== "string" || !registration.client_id) throw brokerError("ROBINHOOD_AUTH_FAILED", "Robinhood client registration was unsuccessful.", 502);
+    async begin(redirectUri, registeredClientId) {
+      // A provider-approved public client keeps its registered identity and callback allowlist.
+      // A successful dynamic registration response alone does not establish callback approval.
+      let clientId = registeredClientId;
+      if (!clientId) {
+        const registration = await jsonRequest(REGISTER, { client_name: "SYNERGY Brain", redirect_uris: [redirectUri],
+          token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], scope: OAUTH_SCOPE });
+        clientId = registration.client_id;
+      }
+      if (typeof clientId !== "string" || !clientId) throw brokerError("ROBINHOOD_AUTH_FAILED", "Robinhood client registration was unsuccessful.", 502);
       const verifier = randomBytes(32).toString("base64url"), state = randomBytes(32).toString("base64url");
-      const pending = { state, verifier, clientId: registration.client_id, redirectUri, createdAt: now() };
+      const pending = { state, verifier, clientId, redirectUri, createdAt: now() };
       const url = new URL(AUTHORIZE);
       url.search = new URLSearchParams({ response_type: "code", client_id: pending.clientId, redirect_uri: redirectUri,
-        scope: "internal", resource: ROBINHOOD_MCP_URL, state, code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url") }).toString();
+        scope: OAUTH_SCOPE, resource: ROBINHOOD_MCP_URL, state, code_challenge_method: "S256", code_challenge: createHash("sha256").update(verifier).digest("base64url") }).toString();
       return { pending, authorizationUrl: url.href };
     },
     async complete(pending, code) {
