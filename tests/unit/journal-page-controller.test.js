@@ -199,6 +199,6 @@ test("public record renders safe legacy defaults and copies its link", async () 
 
   assert.match(root.querySelector("[data-journal-record]").textContent, /LONG\+0\.00ENTRY 0 → EXIT 0 :: --/);
   assert.match(root.querySelector("[data-webhook-embed]").textContent, /CONFLUENCES: none/);
-  assert.deepEqual(copied, ["omensite.io/journal/legacy-1"]);
+  assert.deepEqual(copied, ["http://localhost/journal/legacy-1"]);
   assert.match(root.querySelector("[data-toast]").textContent, /LINK COPIED/);
 });

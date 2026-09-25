@@ -61,7 +61,7 @@ export function createRobinhoodClient({ fetchImpl = fetch, now = () => Date.now(
   }
   return {
     async begin(redirectUri) {
-      const registration = await jsonRequest(REGISTER, { client_name: "OMENSITE Brain", redirect_uris: [redirectUri],
+      const registration = await jsonRequest(REGISTER, { client_name: "SYNERGY Brain", redirect_uris: [redirectUri],
         token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"] });
       if (typeof registration.client_id !== "string" || !registration.client_id) throw brokerError("ROBINHOOD_AUTH_FAILED", "Robinhood client registration was unsuccessful.", 502);
       const verifier = randomBytes(32).toString("base64url"), state = randomBytes(32).toString("base64url");
@@ -91,7 +91,7 @@ export function createRobinhoodClient({ fetchImpl = fetch, now = () => Date.now(
         requestInit: { headers: { Authorization: `Bearer ${credentials.accessToken}` } }, fetch: boundedFetch,
         reconnectionOptions: { maxRetries: 0, maxReconnectionDelay: 1000, initialReconnectionDelay: 1000, reconnectionDelayGrowFactor: 1 },
       });
-      const client = new Client({ name: "omensite-brain", version: "0.1.2" }, { capabilities: {} });
+      const client = new Client({ name: "synergy-brain", version: "0.1.2" }, { capabilities: {} });
       try {
         await client.connect(transport, { timeout: 15000 });
         return await work({

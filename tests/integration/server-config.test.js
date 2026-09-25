@@ -65,7 +65,7 @@ test("server honors HOST and logs the full listening address", async () => {
   });
 
   try {
-    const output = await waitForOutput(child, /OMENSITE listening/);
+    const output = await waitForOutput(child, /SYNERGY listening/);
     assert.match(output, new RegExp(`http://${host}:${port}`));
     const response = await fetch(`http://${host}:${port}/login`);
     assert.equal(response.status, 200);
@@ -90,10 +90,10 @@ test("server exits before listening when Discord configuration is missing or dem
       windowsHide: true,
     });
     try {
-      await assert.rejects(waitForOutput(child, /OMENSITE listening/), (error) => {
+      await assert.rejects(waitForOutput(child, /SYNERGY listening/), (error) => {
         assert.match(error.message, /server exited 1/);
         assert.match(error.message, expected);
-        assert.doesNotMatch(error.message, /OMENSITE listening|test-client-secret/);
+        assert.doesNotMatch(error.message, /SYNERGY listening|test-client-secret/);
         return true;
       });
     } finally {

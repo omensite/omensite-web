@@ -25,7 +25,7 @@ export function buildBrainNetworkData(state = {}) {
   const run = state.selectedRun ?? runs[0] ?? null;
   const toolDefinitions = safeArray(state.toolDefinitions);
   const tools = [...new Map(toolDefinitions.filter((tool) => typeof tool?.name === "string").map((tool) => [tool.name, tool])).values()];
-  const nodes = [{ id: "omen", kind: "core", name: "OMEN", detail: "Agent orchestration", position: [0, 0, 0], status: active(run?.status) ? "running" : "idle" }];
+  const nodes = [{ id: "omen", kind: "core", name: "SYNERGY", detail: "Agent orchestration", position: [0, 0, 0], status: active(run?.status) ? "running" : "idle" }];
   for (const role of ROLES) {
     const graph = safeArray(run?.graph?.nodes).filter((node) => node.role === role.id);
     const providerId = run?.input?.routes?.[role.id] || run?.input?.provider || state.defaultProvider;
@@ -91,7 +91,7 @@ export function createBrainNetwork(host, { onNavigate = () => {} } = {}) {
   const renderCanvas = context ? createBrainNetworkRenderer(context, canvasColors) : null;
   const grid = el('div', undefined, 'brain-network-grid'); grid.setAttribute('aria-hidden', 'true');
   const labels = el('div', undefined, 'brain-network-labels'); labels.setAttribute('role', 'group'); labels.setAttribute('aria-label', 'Explore network regions');
-  const coordinate = el('span', 'OMEN / NEURAL NETWORK', 'brain-network-coordinate');
+  const coordinate = el('span', 'SYNERGY / NEURAL NETWORK', 'brain-network-coordinate');
   const mode = el('span', 'IDLE', 'brain-network-mode');
   const controls = el('div', undefined, 'brain-network-controls'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Network view controls');
   const rotate = button('Rotate', undefined, 'Rotate network'), move = button('Move', undefined, 'Move network');

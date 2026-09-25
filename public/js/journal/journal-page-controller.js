@@ -204,7 +204,9 @@ function renderPublicEntry(root, entry) {
   if (notFound) notFound.hidden = true;
   if (publicView) publicView.hidden = false;
 
-  const publicUrl = `omensite.io/journal/${entry.id}`;
+  const entryPath = `/journal/${encodeURIComponent(entry.id)}`;
+  const origin = documentRef.defaultView?.location?.origin;
+  const publicUrl = origin && origin !== "null" ? new URL(entryPath, origin).href : entryPath;
   const embed = [
     `TRADE: ${entry.direction.toUpperCase()}`,
     `ENTRY: ${entry.entryPrice}  EXIT: ${entry.exitPrice}`,

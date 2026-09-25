@@ -19,7 +19,7 @@ test("protected clean routes render full documents and fragments", async () => {
   assert.match(response.text, /data-statusbar/);
   assert.match(response.text, /data-sidebar/);
   assert.match(response.text, /data-main/);
-  assert.match(response.text, /OMENSITE/);
+  assert.match(response.text, /SYNERGY/);
   assert.match(response.text, /DISCORD SSO/);
   assert.doesNotMatch(response.text, /root@omensite:~\$|SESSION 01 \/ AUTHORIZED/);
 

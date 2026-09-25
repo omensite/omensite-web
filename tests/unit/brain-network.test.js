@@ -152,11 +152,12 @@ test('zoom changes the projection and reset restores the original within bounds'
 
 test('neural geometry is deterministic, branched, and spans eight distinct regions', () => {
   const points = buildMatrixBrain();
-  assert.equal(points.length, 3400); assert.deepEqual(points, buildMatrixBrain());
+  assert.equal(points.length, 6400); assert.deepEqual(points, buildMatrixBrain());
   assert.deepEqual(new Set(points.map((point) => point.region)), new Set(BRAIN_REGIONS));
   assert.ok(points.every((point) => [point.x, point.y, point.z].every(Number.isFinite)));
   for (const region of BRAIN_REGIONS) assert.ok(points.filter((point) => point.region === region).length > 150);
   assert.ok(Math.max(...points.map((point) => point.x)) - Math.min(...points.map((point) => point.x)) > 3, 'topology expands into lateral neuron clusters');
+  assert.ok(Math.max(...points.map((point) => point.z)) - Math.min(...points.map((point) => point.z)) > 2.5, 'clusters occupy multiple depth planes');
 });
 
 test('broker region uses observed connection state and routes to Accounts', (t) => {

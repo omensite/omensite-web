@@ -116,7 +116,7 @@ export function createNavigationController({ documentRef, windowRef, fetchImpl, 
       if (previousRoute) previousRoute.replaceWith(routeView);
       else main?.prepend(routeView);
       if (main) main.scrollTop = 0;
-      documentRef.title = `OMENSITE :: ${title}`;
+      documentRef.title = `SYNERGY :: ${title}`;
       if (history === "push") windowRef.history.pushState({ omensitePath: path }, "", path);
       initializePage(routeView, { path, title, key });
 
